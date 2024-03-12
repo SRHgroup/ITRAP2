@@ -147,7 +147,8 @@ ScaleDataNoOutliers <- function(object, outlier=3) {
 #' @export
 
 # Define the function as an S3 method for Seurat class
-smooth_pmhc <- function(object, best_params = NULL, slot='scale.data', assay = 'pMHC', cl_size_thresh = 5) {
+smooth_pmhc <- function(object, best_params = NULL, slot='scale.data', assay = 'pMHC', cl_size_thresh = 5, 
+                        span_val = 1, degree_val = 1, family_val = "gaussian") {
   
   # Get the scaled count matrix
   scaled_counts <- GetAssayData(object, assay = assay, slot = slot)
@@ -162,13 +163,15 @@ smooth_pmhc <- function(object, best_params = NULL, slot='scale.data', assay = '
     object@meta.data <- object@meta.data %>%
       tibble::rownames_to_column('row_id') %>% 
       group_by(clone_id) %>%
-      mutate(clone_size = if_else(is.na(clone_id), NA_integer_, n())) %>%
+      mutate(clone_size = n()) %>%
       ungroup() %>% 
       tibble::column_to_rownames('row_id')
+    
+    object$clone_size[is.na(object$clone_id)] <- NA
   }
   
   bigger_than5cells <- object$clone_id[object$clone_size > cl_size_thresh] %>% unique()
-  clone_ids <- clone_ids[clone_ids %in% bigger_than5cells & !is.na(clone_ids)]
+  clone_ids <- clone_ids[clone_ids %in% bigger_than5cells & !is.na(clone_ids)] %>% unique()
   
   # Get list of unique pmhcs
   pmhcs <- rownames(scaled_counts)
@@ -180,10 +183,15 @@ smooth_pmhc <- function(object, best_params = NULL, slot='scale.data', assay = '
   # Empty vector to store clones with errors
   clones_with_errors <- c()
   
+  total_iterations <- length(clone_ids)
+  iteration <- 0
+  
   # add a list to track if the smoothing went through
   object@commands$smooth_pmhc <- list()
   for (clone_id in clone_ids) {
-    print(paste0('smoothing all pmhcs for clone ', clone_id))
+    iteration <- iteration + 1
+    cat(sprintf("Processing %d of %d\n", iteration, total_iterations))
+    cat(sprintf("smoothing all pmhcs for clone %s\n", clone_id))
     
     clone_cells <- which(clone_assignments == clone_id)
     
@@ -193,9 +201,6 @@ smooth_pmhc <- function(object, best_params = NULL, slot='scale.data', assay = '
       
       error_occurred <- tryCatch({
         # Default parameters
-        span_val <- 1
-        degree_val <- 1
-        family_val <- "gaussian"
         
         if (!is.null(best_params[[pmhc]])) {
           span_val <- best_params[[pmhc]][1] %>% as.numeric()
