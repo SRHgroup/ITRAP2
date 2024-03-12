@@ -9,7 +9,10 @@ smooth_pmhc(
   best_params = NULL,
   slot = "scale.data",
   assay = "pMHC",
-  cl_size_thresh = 5
+  cl_size_thresh = 5,
+  span_val = 1,
+  degree_val = 1,
+  family_val = "gaussian"
 )
 }
 \arguments{
