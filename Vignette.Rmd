@@ -1,0 +1,109 @@
+---
+title: "pmhc_denoiseR vignette"
+author: "Grigorii Nos"
+date: "2024-03-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(dev='CairoPNG')
+```
+
+## R Markdown
+
+pmhcDenoiseR is a data denoising workflow for single-cell pMHC datasets. The workflow also assigns the 
+pMHC specificities to individual clonotypes. pmhcDenoiseR works with coupled single-cell pMHC counts with TCR clonotypes.
+
+```{r load_packages}
+library(pmhcDenoiseR)
+library(Seurat)
+library(tidyverse)
+library(ggplot2)
+library(ComplexHeatmap)
+```
+
+### load the data
+
+we generated a dataset with PBMC T cells from healthy donors, that were screen for the recognition 100 pMHC panel of common chronic viral epitopes, the data is stored as a Seurat object, as the whole package is build around Seurat class
+
+```{r load_data, echo=FALSE}
+data('viral_screen')
+
+viral_screen@assays$pMHC@counts %>% head()
+```
+
+the gene expression part of this object is deleted here to save the space, in case you want to explore the data with gene expression, you are welcome to download it from ArrayExpress repository. https://www.ebi.ac.uk/biostudies/arrayexpress/studies/E-MTAB-13758?key=686eea8a-f64c-4c66-a859-9ca937cfa767
+
+you can see that features aren't directly names as pMHC, sinse in some experients the same barcode can by applied to different pMHC in different donors, so we store this data.frame for pMHC annotation
+
+```{r pmhc_annotation}
+
+viral_screen@misc$pmhc %>% head()
+```
+
+it will help to assign specificities in the @meta.data later on.
+
+We also expect you to store your clonotype information for each gem in @meta.data, we use `clone_id` column name, sinse we used immcantation pipeline https://immcantation.readthedocs.io/en/stable/ to process TCR sequencing data.
+
+```{r}
+viral_screen@meta.data$clone_id %>% head(10)
+```
+
+# visualise raw data
+
+Lets first look at the pMHC distribution of the raw pMHC count within big clviral_screen, we expect a consistent signal for a specific pMHC within some clviral_screen, before labeling the clone with the specificity, but we also expect a substantial amount of noise.
+
+```{r}
+# we subset gems from 1 donor for simplicity, bc=buffy coat, BC390 is a donor ID
+obj_sub <- subset(viral_screen, BC == 'BC390') 
+
+# we take obly 5+ gems clviral_screen  
+clones <- obj_sub$clone_id[obj_sub$clone_size > 5] %>% table() %>% sort(decreasing = T) %>% names()
+
+# and we plot the heatmap, sorted by clonotypes
+pmhc_heatmap(object = obj_sub, slot = 'counts', hm_breaks = c(0, 5, 10),
+             clones=clones, show_row_names = T, clean_mat = F)
+```
+we can see that some clone (grouped columns) have noisy, but visible consistent signals some pMHCs, we can further visualise a single clone in more details
+
+```{r}
+pmhc_dist_per_clone(object = viral_screen, clone = '3487_2473', aggr_threshold = 10)
+```
+Look at this clone and pMHC counts distributions, on the left we can see that two B0801 pMHC have the highest number of gems, that aren't zero. We can as well calculate a metric called clonal pmhc concordance, introduced in Polvsen et al 2023, elife, that calculates a proportion of gems in the clone, whose highest value of pMHC count is in this pMHC. So we can reasonably assume that this clone is B0801 specific, but data isnot clean enough to have any automate way of assigning it. 
+
+## scaling
+
+So in next steps we can start to normalize and denoise the data, we apply speific way of mean centering and sd scaling, where means and sds are calculated, not taking outlines (|z|>3) into account. this approach is used, instead of typically used median centering and mad scaling, sinse in sparse single-cell datasets, medians and mads are often zeros.
+
+
+```{r}
+viral_screen <- ScaleDataNoOutliers(viral_screen)
+
+obj_sub <- subset(viral_screen, BC == 'BC390') 
+
+pmhc_heatmap(object = obj_sub, slot = 'scale.data', hm_breaks = c(-3, 0, 10),
+             clones = clones, show_row_names = T, clean_mat = F)
+
+pmhc_dist_per_clone(object = obj_sub, clone = '3487_2473', aggr_threshold = 10, slot = 'scale.data')
+```
+We can clearly see more clear signal, that we can further improve in the next step, which is smoothing each pMHC within each expanded clone, using local regression (loess). 
+
+## smoothing
+
+```{r}
+obj_sub <- smooth_pmhc(obj_sub)
+obj_sub <- assign_pmhc(obj_sub)
+
+pmhc_heatmap(object = obj_sub, slot = 'scale.data', hm_breaks = c(-3, 0, 10),
+             clones = clones, show_row_names = T, clean_mat = F)
+
+pmhc_dist_per_clone(object = obj_sub, clone = '3487_2473', aggr_threshold = 10, slot = 'scale.data')
+```
+
+this way loess regression minimises the within clone variability in the pMHC values, forcing outliers to follow the trend, thus denoising the data and making it easy to autocatically assign specificities to each clone. If clone has no signal for any pMHc in your panel, its labeled as negative. The pMHC assigments are stored in `pMHC_classification` column by default
+
+```{r}
+obj_sub$pMHC_classification %>% head(10)
+```
+
