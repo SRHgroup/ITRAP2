@@ -9,7 +9,12 @@ Description: pmhcDenoiseR is a data denoising workflow for single-cell pMHC data
 Imports: 
     Seurat,
     tidyverse,
-    ggplot2
+    ggplot2,
+    uniformly
+Suggests: 
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
