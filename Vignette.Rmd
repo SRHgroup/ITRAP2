@@ -2,8 +2,12 @@
 title: "pmhc_denoiseR vignette"
 author: "Grigorii Nos"
 date: "2024-03-14"
-output: html_document
+output:
+  html_document: default
+  pdf_document: default
 ---
+
+
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -16,8 +20,9 @@ pmhcDenoiseR is a data denoising workflow for single-cell pMHC datasets. The wor
 pMHC specificities to individual clonotypes. pmhcDenoiseR works with coupled single-cell pMHC counts with TCR clonotypes.
 
 ```{r load_packages}
-library(pmhcDenoiseR)
 library(Seurat)
+library(pmhcDenoiseR)
+library(uniformly)
 library(tidyverse)
 library(ggplot2)
 library(ComplexHeatmap)
@@ -67,8 +72,8 @@ pmhc_heatmap(object = obj_sub, slot = 'counts', hm_breaks = c(0, 5, 10),
 ```
 we can see that some clone (grouped columns) have noisy, but visible consistent signals some pMHCs, we can further visualise a single clone in more details
 
-```{r}
-pmhc_dist_per_clone(object = viral_screen, clone = '3487_2473', aggr_threshold = 10)
+```{r }
+pmhc_dist_per_clone(object = viral_screen, clone = '3487_2473', aggr_threshold = 10, slot = 'counts')
 ```
 Look at this clone and pMHC counts distributions, on the left we can see that two B0801 pMHC have the highest number of gems, that aren't zero. We can as well calculate a metric called clonal pmhc concordance, introduced in Polvsen et al 2023, elife, that calculates a proportion of gems in the clone, whose highest value of pMHC count is in this pMHC. So we can reasonably assume that this clone is B0801 specific, but data isnot clean enough to have any automate way of assigning it. 
 

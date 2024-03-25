@@ -4,7 +4,7 @@
 \alias{scale2}
 \title{Centers and scales a rows in numeric matrix}
 \usage{
-scale2(mat, sd_fun = sd, replace_zero = F, ...)
+scale2(mat, sd_fun = sd, replace_zero = F)
 }
 \arguments{
 \item{mat}{A numeric matrix (\code{matrix}).}

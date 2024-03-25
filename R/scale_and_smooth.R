@@ -14,7 +14,7 @@
 #' scale2(mat, sd_fun=sd, replace_zero=T)
 #'
 #' @export
-scale2 <- function(mat, sd_fun = sd, replace_zero=F, ...) {
+scale2 <- function(mat, sd_fun = sd, replace_zero=F) {
   
   if(is.vector(mat)) {
     mean <- mean(mat, na.rm = T)
@@ -26,8 +26,8 @@ scale2 <- function(mat, sd_fun = sd, replace_zero=F, ...) {
     return( (mat - mean) / sd )
   }
   else {
-    means <- rowMeans(mat, na.rm = T)
-    sds <- apply(mat, 1, function(x) sd_fun(x, na.rm = T, ...))
+    means <- apply(mat, 1, mean, na.rm = T)
+    sds <- apply(mat, 1, function(x) sd_fun(x, na.rm = T))
     
     if (replace_zero){
       sds[sds == 0] <- .0001
@@ -52,8 +52,8 @@ scale2 <- function(mat, sd_fun = sd, replace_zero=F, ...) {
 #'
 #' @export
 
-super_scale <- function(umi_matrix, outlier=3, ...) {
-  scaled_umi_matrix <- scale2(umi_matrix, ...)  
+super_scale <- function(umi_matrix, outlier=3, sd_fun=sd) {
+  scaled_umi_matrix <- scale2(umi_matrix, sd_fun)  
   umi_matrix[abs(scaled_umi_matrix) > outlier] <- NA
   return(umi_matrix)
 }
@@ -82,8 +82,7 @@ super_scale <- function(umi_matrix, outlier=3, ...) {
 
 ScaleDataNoOutliers <- function(object, outlier=3) {
   
-  # Make sure the provided object is a Seurat object
-  if(!is(object, "Seurat")) {
+   if(!is(object, "Seurat")) {
     stop("The provided object is not a Seurat object.")
   }
   
@@ -96,7 +95,7 @@ ScaleDataNoOutliers <- function(object, outlier=3) {
   while(any(abs(scale2(umi_matrix, sd_fun = sd)) > outlier, na.rm = TRUE)) {
     iter <- iter + 1
     print(paste0('iteration ', iter))
-    umi_matrix <- super_scale(umi_matrix, sd_fun = sd, ...)
+    umi_matrix <- super_scale(umi_matrix, sd_fun = sd)
     nzeroes <- apply(umi_matrix, 1, function(x) sum(x[x != 0], na.rm = T))
     sds_stats_iter[[paste0('iteration=', iter)]] <- nzeroes
     
@@ -119,8 +118,7 @@ ScaleDataNoOutliers <- function(object, outlier=3) {
   sds <- apply(sds_iter, 1, get_last_nonzero)
   #rownames(sds_iter) <- recode(rownames(sds_iter), !!!bc_pmhc)
   
-  # Modify the Seurat object's scale.data slot
-  object@assays$pMHC@scale.data <- as.matrix((object@assays$pMHC@data - rowMeans(umi_matrix, na.rm = T)) / sds)
+  object@assays$pMHC@scale.data <- as.matrix((object@assays$pMHC@data - apply(umi_matrix, 1, mean, na.rm = T)) / sds)
   
   return(object)
 }
@@ -147,16 +145,13 @@ ScaleDataNoOutliers <- function(object, outlier=3) {
 #' @export
 
 # Define the function as an S3 method for Seurat class
-smooth_pmhc <- function(object, best_params = NULL, slot='scale.data', assay = 'pMHC', cl_size_thresh = 5, 
+smooth_pmhc <- function(object, best_params = NULL, slot='scale.data', assay = 'pMHC', cl_size_thresh = 3, 
                         span_val = 1, degree_val = 1, family_val = "gaussian") {
   
-  # Get the scaled count matrix
   scaled_counts <- GetAssayData(object, assay = assay, slot = slot)
   
-  # Get clone assignments for each cell
   clone_assignments <- object$clone_id#[!is.na(object$clone_id)]
   
-  # Get unique clone IDs
   clone_ids <- unique(clone_assignments)
   
   if (!"clone_size" %in% names(object@meta.data)) {
@@ -170,23 +165,19 @@ smooth_pmhc <- function(object, best_params = NULL, slot='scale.data', assay = '
     object$clone_size[is.na(object$clone_id)] <- NA
   }
   
-  bigger_than5cells <- object$clone_id[object$clone_size > cl_size_thresh] %>% unique()
-  clone_ids <- clone_ids[clone_ids %in% bigger_than5cells & !is.na(clone_ids)] %>% unique()
+  bigger_thanXcells <- object$clone_id[object$clone_size > cl_size_thresh] %>% unique()
+  clone_ids <- clone_ids[clone_ids %in% bigger_thanXcells & !is.na(clone_ids)] %>% unique()
   
-  # Get list of unique pmhcs
   pmhcs <- rownames(scaled_counts)
   
-  # Initialize the matrix to hold smoothed counts
   smoothed_counts <- matrix(0, nrow = nrow(scaled_counts), ncol = ncol(scaled_counts),
                             dimnames = dimnames(scaled_counts))
   
-  # Empty vector to store clones with errors
   clones_with_errors <- c()
   
   total_iterations <- length(clone_ids)
   iteration <- 0
   
-  # add a list to track if the smoothing went through
   object@commands$smooth_pmhc <- list()
   for (clone_id in clone_ids) {
     iteration <- iteration + 1
@@ -208,13 +199,11 @@ smooth_pmhc <- function(object, best_params = NULL, slot='scale.data', assay = '
           family_val <- best_params[[pmhc]][3]
         }
         
-        # Fit LOESS model
         loess_fit <- loess(counts ~ seq_along(counts), normalize = F, 
                            span = span_val, 
                            degree = degree_val,
                            family = family_val)
         
-        # Predict smoothed counts
         smoothed_counts[pmhc,][clone_cells] <- predict(loess_fit)
         #return(FALSE)
       }, error = function(e) {
@@ -222,9 +211,6 @@ smooth_pmhc <- function(object, best_params = NULL, slot='scale.data', assay = '
         #return(TRUE)
       })
       
-      #if (error_occurred) {
-      #  clones_with_errors <- c(clones_with_errors, clone_id)
-      #}
     }
     object@commands$smooth_pmhc[[clone_id]] <- 'done'
   }
@@ -261,61 +247,79 @@ smooth_pmhc <- function(object, best_params = NULL, slot='scale.data', assay = '
 #'
 #' @export
 
-assign_pmhc <- function(object, cl_size_thresh=5, slot='scale.data', assay='pMHC', gap_threshold = 1){
+assign_pmhc <- function(object, slot='scale.data', assay='pMHC', 
+                        cl_size_thresh=3, entropy_thresh=1, gap_threshold = 1){
   
   clones <- object$clone_id[!is.na(object$clone_id)]
-  big_clones <- names(table(clones)[table(clones) > cl_size_thresh])
+  big_clones <- names(table(clones)[table(clones) > 1])
   
-  if (length(big_clones) == 0){
+   if (is.null(object@misc$pmhc)){
     object$pMHC_classification <- 'Negative'
-    print('No clones of size greater than 5 in the object, returning Negative in pMHC_classification')
-    return(object)
-  } else if (is.null(object@misc$pmhc)){
-    object$pMHC_classification <- 'Negative'
-    print('No pmhc barcode annotation is found in object@misc$pmhc')
+    cat('No pmhc barcode annotation is found in object@misc$pmhc')
     return(object)
   } else {
+    
     clone_bulk <- AverageExpression(object %>% subset(clone_id %in% big_clones), 
                                     assays = assay, group.by = 'clone_id', 
                                     slot = slot, )$pMHC
     
-    # Initialize a list to store the results
+    single_gem_obj <- subset(object, clone_size==1)
+    single_gems <- GetAssayData(single_gem_obj, layer='scale.data', assay='pMHC')
+    colnames(single_gems) <- single_gem_obj@meta.data$clone_id
+    
+    rm(single_gem_obj)
+    clone_bulk <- cbind(clone_bulk, single_gems)
+  
+    high_entropy_pmhc <- rownames(object@misc$noise_score)[object@misc$noise_score$noise_score > entropy_thresh]
+    small_clones <- colnames(clone_bulk)[colnames(clone_bulk) %in% object$clone_id[object$clone_size < cl_size_thresh]]
+      
+    clone_bulk[,small_clones][high_entropy_pmhc,] <- -10
+    
+    sds <- apply(clone_bulk, 2, sd) 
+    clone_bulk <- clone_bulk[,!colnames(clone_bulk) %in% names(sds[sds < .2])] 
+    
     clone_outliers <- list()
     
-    # For each column (clone) in the matrix
     for (i in 1:ncol(clone_bulk)) {
-      # Obtain the sorted scores
-      scores <- sort(clone_bulk[,i], decreasing = F)
-      scores[scores<0] <- 0
+      cat(sprintf('assigning %d out of %ds clones\n', i, ncol(clone_bulk)))
       
-      # Calculate the differences between consecutive scores
+      cl_size <- object$clone_size[object$clone_id == colnames(clone_bulk)[i]] %>% unique() %>% drop.na()
+    
+        scores <- sort(clone_bulk[,i], decreasing = F)
+      scores[scores<0] <- 0
+
       diffs <- diff(scores)
       #diffs[1:round(length(diffs)/2)] <- 0
       
-      # Find the position of the first gap that is larger than the threshold
       gap_pos <- which(diffs > gap_threshold)[1]
       
-      # Check if a gap was found
       if (!is.na(gap_pos)) {
-        # The outliers are the scores after the largest gap
         outliers <- scores[(gap_pos+1):length(scores)]
         
-        # Add the outlier indices to the list, using the column name as the list name
-        clone_outliers[[colnames(clone_bulk)[i]]] <- list(names(outliers))
+        noise_scores <- object@misc$noise_score[names(outliers),]$noise_score
+        concordance <- calculate_pmhc_concordance(
+          clone_obj = subset(object, clone_id == colnames(clone_bulk)[i]),
+          assay='pMHC', slot='scale.data')[names(outliers)] 
+        
+        confidence_scores <- calculate_confidence(noises = noise_scores, 
+                                                  concordances = concordance, 
+                                                  clone_size = cl_size)
+        
+        clone_outliers[[colnames(clone_bulk)[i]]] <- list(confidence_scores)
       } else {
         # Handle the case where no gap is found
-        clone_outliers[[colnames(clone_bulk)[i]]] <- list("Negative")
+        clone_outliers[[colnames(clone_bulk)[i]]] <- list(c("Negative"=NA))
       }
     }
-    
-    # Print or return the result as needed
-    clone_outliers
     
     pmhc_bc <- setNames(object@misc$pmhc$pmhc, object@misc$pmhc$Barcode)
     df <- do.call(rbind, lapply(names(clone_outliers), function(x) {
       data.frame(clone_id = x,
                  pMHC_classification = if (clone_outliers[[x]] == "Negative") "Negative" else paste(
-                   clone_outliers[[x]][[1]] %>% recode(!!!pmhc_bc), 
+                   names(clone_outliers[[x]][[1]]) %>% recode(!!!pmhc_bc), 
+                   collapse=":"),
+                 pMHC_confidence = if (clone_outliers[[x]] == "Negative") NA else paste(
+                   clone_outliers[[x]][[1]], 
                    collapse=":"))
     }
     )
@@ -324,16 +328,18 @@ assign_pmhc <- function(object, cl_size_thresh=5, slot='scale.data', assay='pMHC
     
     object@meta.data <- object@meta.data %>% 
       tibble::rownames_to_column('row_id') %>% 
-      {
-        if ('pMHC_classification' %in% names(.)) {
-          dplyr::select(., -pMHC_classification)
-        } else {
-          .
-        }
-      } %>%
+      select(-matches('^(pMHC_classification|pMHC_confidence)$')) %>%
       left_join(df, by = 'clone_id') %>% 
       tibble::column_to_rownames('row_id')
     
     return(object)
   }
 }
+
+
+
+
+
+
+
+
