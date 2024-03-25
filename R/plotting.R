@@ -1,44 +1,3 @@
-#' Calculate pMHC Concordance
-#'
-#' This function calculates the concordance of pMHC, which for each pMHC is a proportion of gems
-#' that have a value for this pMHC highers above all else, the mertic was introtuced in Polvsen et al 2023, elife
-#'
-#' @param clone_obj An Seurat object subset for a single clone. 
-#' that includes pMHC assay data.
-#' @param preserve_pmhc A character vector specifying the names or identifiers of pMHCs to be preserved 
-#' for the concordance calculation. If NULL (default), all pMHCs are used.
-#' @param slot The slot of the clone object from which to retrieve the pMHC data. 
-#' Common values include 'counts', 'data', or 'scale.data'. Defaults to 'counts'.
-#' @param assay The name of the assay to use for extracting the pMHC data. Defaults to 'pMHC'.
-#'
-#' @return A numeric vector representing the concordance for each pMHC. 
-#' Concordance is calculated as the proportion of cells (columns) for which a pMHC has 
-#' the maximum count value, across all pMHCs considered in the analysis.
-#'
-#' @examples
-#' # Assuming 'clone_obj' is a pre-loaded Seurat object with pMHC data:
-#' concordance <- calculate_pmhc_concordance(clone_obj)
-#' 
-#' # To focus on specific pMHCs:
-#' concordance_specific <- calculate_pmhc_concordance(clone_obj, preserve_pmhc = c("pmhc1", "pmhc2"))
-#' 
-#' @export
-calculate_pmhc_concordance <- function(clone_obj, preserve_pmhc=NULL, slot='counts', assay='pMHC'){
-  
-  pmhc_counts <- GetAssayData(clone_obj, slot = slot, assay = assay)
-  
-  if (!is.null(preserve_pmhc)){
-    pmhc_counts <- pmhc_counts[preserve_pmhc,]
-  }
-  
-  max_vals <- apply(pmhc_counts, 2, max)
-  max_counts <- apply(pmhc_counts, 1, function(row) sum(row == max_vals))
-  
-  concordance <- max_counts/ncol(pmhc_counts)
-  
-  return(concordance)
-}
-
 #' Create a Clonal pMHC Heatmap
 #'
 #' Generates a heatmap to visualize pMHC values within a single clone. This function uses the `ComplexHeatmap` package to create 
@@ -69,12 +28,10 @@ clonal_pmhc_heatmap <- function(data_matrix) {
   library(RColorBrewer)
   library(grid)
   
-  # Ensure data is a matrix
-  if (!is.matrix(data_matrix)) {
+   if (!is.matrix(data_matrix)) {
     data_matrix <- as.matrix(data_matrix)
   }
   
-  # Create Heatmap
   heatmap_plot <- Heatmap(
     data_matrix, 
     cluster_rows = FALSE,
@@ -82,16 +39,16 @@ clonal_pmhc_heatmap <- function(data_matrix) {
     show_row_names = TRUE,
     row_names_side = 'left',
     show_column_names = FALSE, 
-    row_names_gp = gpar(fontsize = 10), # Adjust fontsize as necessary
-    column_names_gp = gpar(fontsize = 10), # Adjust fontsize as necessary
-    rect_gp = gpar(col = "grey", lwd = 0.2), # Set rectangle border properties
+    row_names_gp = gpar(fontsize = 10), 
+    column_names_gp = gpar(fontsize = 10), 
+    rect_gp = gpar(col = "grey", lwd = 0.2), 
     heatmap_legend_param = list(
-      title = "UMI counts", # Update as necessary
-      legend_width = unit(2, "cm"), # Adjust width as necessary
-      legend_height = unit(4, "cm"), # Adjust height as necessary
+      title = "UMI counts",
+      legend_width = unit(2, "cm"), 
+      legend_height = unit(4, "cm"), 
       color_bar = "continuous", position='left',
-      legend_main_gp = gpar(fontsize = 10), # Adjust fontsize as necessary
-      legend_gp = gpar(fontsize = 8) # Adjust fontsize as necessary
+      legend_main_gp = gpar(fontsize = 10),
+      legend_gp = gpar(fontsize = 8) 
     )
   )
   
@@ -134,8 +91,8 @@ pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10, slot = 'counts
   
   clone_obj <- subset(object, clone_id == clone)
   
-  pmhc_counts <- GetAssayData(clone_obj, slot = 'counts', assay = 'pMHC')
-  pmhc_matrix <- GetAssayData(clone_obj, slot = slot, assay = 'pMHC')
+  pmhc_counts <- GetAssayData(clone_obj, layer = 'counts', assay = 'pMHC')
+  pmhc_matrix <- GetAssayData(clone_obj, layer = slot, assay = 'pMHC')
   
   pmhc_labels <- object@misc$pmhc$pmhc
   
@@ -144,13 +101,13 @@ pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10, slot = 'counts
   rownames(pmhc_counts) <- recode(rownames(pmhc_counts), !!!pmhc_labels)
   rownames(pmhc_matrix) <- recode(rownames(pmhc_matrix), !!!pmhc_labels)
   
-  aggr <- rowSums(pmhc_counts)
+  aggr <- apply(pmhc_counts,1,sum)
   preserve <- names(aggr)[aggr > aggr_threshold] 
   
   pmhc_matrix <- pmhc_matrix[preserve,]
   
   pmhc_matrix2 <- pmhc_matrix
-  rown <- unname(rowSums(pmhc_matrix2 > 2)) 
+  rown <- unname(apply(pmhc_matrix2 > 2, 1, sum)) 
   rown <- paste('npos=', rown, sep = '')
   rownames(pmhc_matrix2) <- rown 
   
@@ -162,7 +119,7 @@ pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10, slot = 'counts
     mutate(Feature = factor(Feature, levels=rev(preserve)))
   
   y_vals <- seq(0.5, nrow(pmhc_matrix) + 0.5)
-  # Create jitter plots
+
   dists <- ggplot(pmhc_matrix_long, aes(x = UMI, y = Feature, color = Feature)) +
     geom_jitter() +
     geom_hline(yintercept = y_vals, linetype = "dashed", colour = "grey", size = 0.5) +
@@ -217,7 +174,7 @@ pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10, slot = 'counts
 #' @param condpalette A color palette for conditioning variables, if applicable.
 #' @param highlight_pmhc.tcr Optional; specific pMHC-TCR interactions to highlight in the heatmap.
 #' @param pmhc_palette A color palette for pMHCs, if differentiating by pMHC is desired.
-#' @param rowm.fonts Font size for row names.
+#' @pararowm.fonts Font size for row names.
 #' @param column_title_fonts Font size for the column title.
 #' @param column_title_rot Rotation angle for the column title.
 #' @param use_original_order Logical; whether to use the original order of clones.
@@ -239,11 +196,11 @@ pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10, slot = 'counts
 #' @importFrom circlize colorRamp2
 #' @importFrom randomcoloR get_random_grid_colors
 #' @export
-pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_order=NULL,
-                         hm_breaks = c(0, 4, 10), hm_palette=c("blue", "white", "red"), 
-                         condpalette=NULL, highlight_pmhc.tcr = NULL, pmhc_palette=NULL, rowm.fonts=8,  
+pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_order=NULL, split_cols=FALSE,
+                         hm_breaks = c(0, 4, 10), hm_palette=c("blue", "white", "red"), pmhc_palette=NULL,
+                         condpalette=NULL, highlight_pmhc.tcr = NULL, stop_large_highlighting=T, rowm.fonts=8,  
                          column_title_fonts = 10, column_title_rot = 45, use_original_order=T, clean_mat=F, 
-                         add_tcr_cluster=F, show_row_names=T, pmhc_subset=NULL, ...){
+                         add_tcr_cluster=F, show_row_names=T, pmhc_subset=NULL, custom_annotations=c(), max_cols=16000, ...){
   
   library(randomcoloR)
   library(circlize)
@@ -251,6 +208,11 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
   
   if(length(clones) == 0) {
     stop("list of clonotypes in `clone` argument is empty")
+  }
+  # Additional steps to ensure custom_annotations are part of the object's metadata
+  missing_cols <- setdiff(custom_annotations, colnames(object@meta.data))
+  if(length(missing_cols) > 0){
+    stop(paste("Missing columns in object's metadata:", paste(missing_cols, collapse=", ")))
   }
   
   cells_subset <- Cells(object)[(object$clone_id %in% clones) & !is.na(object$clone_id)]
@@ -264,11 +226,13 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
     object$pMHC_maxID <- recode(pMHC_maxID, !!!pmhc_bc)
   }
   
-  object$pMHC_classification <- NA
+  if (!'pMHC_classification' %in% colnames(object@meta.data)){
+    object$pMHC_classification <- NA
+  }
   
+  ann_columns <- c("clone_id", "pMHC_maxID", "pMHC_classification", custom_annotations)
   ann_subset <- object@meta.data %>%
-    dplyr::select(c(clone_id, pMHC_maxID,
-                    pMHC_classification)) %>%
+    select(all_of(ann_columns)) %>%
     filter(row.names(.) %in% cells_subset) %>%
     arrange(clone_id)
   
@@ -330,82 +294,89 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
   
   col_fun = colorRamp2(hm_breaks, hm_palette)
   
-  if (is.null(highlight_pmhc.tcr)){
-    hm22ann <- HeatmapAnnotation(clone_id = ann_subset$clone_id, 
-                                 pmhc = gsub(':', '\n', ann_subset$pMHC_classification),
-                                 col = palette_list, show_legend = c(F, T, T),
-                                 which = 'col',
-                                 annotation_width = unit(c(1, 4), 'cm'),
-                                 gap = unit(1, 'mm'))
+  if (split_cols){
+    split_cols <- ann_subset$clone_id
+  } else {
+    split_cols <- NULL
+  }
+  
+  if (ncol(pmhc_subset_) > max_cols) {
+    set.seed(123) 
+    sampled_cols <- sample(colnames(pmhc_subset_), max_cols)
     
-    pmhc_subset_hmap <- Heatmap(
-      pmhc_mat, name = "pmhc_subset_hmap",
-      show_row_names = show_row_names, show_column_names = FALSE,
-      col = col_fun,
-      cluster_rows = F, cluster_columns = F,
-      row_names_gp = grid::gpar(fontsize = rowm.fonts),  
-      column_title_gp = gpar(fontsize = column_title_fonts), 
-      column_title_rot = column_title_rot,
-      column_split = ann_subset$clone_id, 
-      top_annotation=hm22ann, ...)
+    pmhc_subset_ <- pmhc_subset_[, sampled_cols]
+    ann_subset <- ann_subset[sampled_cols,]
     
+    message("Number of columns exceeds threshold. Data has been randomly sampled to ", max_cols, " columns.")
+  }
+    
+  if (is.null(clones_order)){
+    cells_order <- ann_subset %>% 
+      arrange(pMHC_classification, clone_id) %>%
+      rownames_to_column('cell_id') %>%
+      pull('cell_id')
+  } else {
+    cells_order <- ann_subset %>%
+      mutate(clone_order_factor = factor(clone_id, levels = clones_order)) %>%
+      arrange(clone_order_factor) %>%
+      select(-clone_order_factor) %>% 
+      rownames_to_column('cell_id') %>%
+      pull(cell_id)
+  }
+  
+  ann_subset_ordered <- ann_subset[cells_order,]
+  pmhc_mat_ordered <- pmhc_mat[,cells_order]
+  
+  custom_ann_list <- setNames(lapply(custom_annotations, function(cn) ann_subset[cells_order,][[cn]]), custom_annotations)
+  
+  ann_list <- list(
+    clone_id = ann_subset[cells_order,]$clone_id, 
+    pmhc = gsub(':', '\n', ann_subset[cells_order,]$pMHC_classification)
+  )
+  ann_list <- c(ann_list, custom_ann_list) # Combine lists
+  
+  hm22ann <- do.call(HeatmapAnnotation, c(ann_list, list(
+    col = palette_list, show_legend = c(F, T, T),
+    which = 'col',
+    annotation_width = unit(c(1, 4), 'cm'),
+    gap = unit(1, 'mm')
+  )))
+  
+  pmhc_subset_hmap <- Heatmap(
+    pmhc_mat_ordered, name = "pmhc_subset_hmap",
+    show_row_names = show_row_names, show_column_names = FALSE,
+    col = col_fun,
+    cluster_rows = F, cluster_columns = F,
+    row_names_gp = grid::gpar(fontsize = rowm.fonts),  
+    column_title_gp = gpar(fontsize = column_title_fonts), 
+    column_title_rot = column_title_rot,
+    top_annotation=hm22ann)
+    
+  draw(pmhc_subset_hmap)
+  
+  if (!highlight_pmhc.tcr){
     return(pmhc_subset_hmap)
   } else {
-    tcr_pmhc <- object@meta.data %>%
+    if (length(clones) > 300 & stop_large_highlighting){
+      stop('highlighting more than 300 clones specificity usually crushes the session, \n
+           if you want to continue, set stop_large_highlighting=F')
+    }
+    tcr_pmhc <- ann_subset_ordered %>%
       dplyr::select(clone_id, pMHC_classification) %>%
       filter(!is.na(pMHC_classification) & pMHC_classification != 'Negative') %>%
       unique() %>%
       separate_rows(pMHC_classification, sep=':')
     
-    if (is.null(clones_order)){
-      cell_order <- ann_subset %>% 
-        arrange(pMHC_classification) %>%
-        rownames_to_column('cell_id') %>%
-        pull('cell_id')
-    } else {
-      cells_order <- ann_subset %>%
-        mutate(clone_order_factor = factor(pMHC_maxID, levels = clones_order)) %>%
-        arrange(clone_order_factor) %>%
-        select(-clone_order_factor) %>% 
-        rownames_to_column('cell_id') %>%
-        pull(cell_id)
-    }
-    
-    ann_subset_ordered <- ann_subset[cell_order,]
-    pmhc_mat_ordered <- pmhc_mat[,cell_order]
-    
-    hm22ann <- HeatmapAnnotation(clone_id = ann_subset_ordered$clone_id, 
-                                 pmhc = gsub(':', '\n', ann_subset_ordered$pMHC_classification),
-                                 col = palette_list, show_legend = c(F, T, T),
-                                 which = 'col',
-                                 annotation_width = unit(c(1, 4), 'cm'),
-                                 gap = unit(1, 'mm'))
-    
-    pmhc_subset_hmap <- Heatmap(
-      pmhc_mat_ordered, name = "pmhc_subset_hmap",
-      show_row_names = show_row_names, show_column_names = FALSE,
-      col = col_fun,
-      cluster_rows = F, cluster_columns = F,
-      row_names_gp = grid::gpar(fontsize = rowm.fonts),  
-      column_title_gp = gpar(fontsize = column_title_fonts), 
-      column_title_rot = column_title_rot,
-      top_annotation=hm22ann, ...)
-    
-    draw(pmhc_subset_hmap)
-    highlight_indices <- list(
-      rows = c(),
-      cols = c()
-    )
     for (i in 1:nrow(tcr_pmhc)){
-      # Compute the cells and pMHCs that should be highlighted for this iteration
-      cell_ids_i <- object$clone_id == tcr_pmhc[i,]$clone_id
+      cat(sprintf("highlighting %dth tcr-pmhc\n", i))
+ 
+      cell_ids_i <- ann_subset_ordered$clone_id == tcr_pmhc[i,]$clone_id
       cell_ids_i[is.na(cell_ids_i)] <- FALSE
-      cell_ids_i <- match(Cells(object)[cell_ids_i], colnames(pmhc_mat_ordered))
+      cell_ids_i <- match(rownames(ann_subset_ordered)[cell_ids_i], colnames(pmhc_mat_ordered))
       
       pmhc_ids_i <- which(rownames(pmhc_mat_ordered) == tcr_pmhc[i,]$pMHC_classification)
       pmhc_ids_i <- rep(pmhc_ids_i, length(cell_ids_i))
       
-      # Now decorate the heatmap for this iteration's highlights
       decorate_heatmap_body("pmhc_subset_hmap", {
         for (row in pmhc_ids_i) {
           cols_in_row <- cell_ids_i
@@ -425,6 +396,8 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
     }
   }
 }
+
+
 
 #' Generate a Set of Random Colors from a Grid
 #'

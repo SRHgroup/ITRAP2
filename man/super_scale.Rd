@@ -4,7 +4,7 @@
 \alias{super_scale}
 \title{Scale without outliers}
 \usage{
-super_scale(umi_matrix, outlier = 3, ...)
+super_scale(umi_matrix, outlier = 3, sd_fun = sd)
 }
 \arguments{
 \item{outlier}{(\code{numeric}) from what z-score a value is considered an outlier}

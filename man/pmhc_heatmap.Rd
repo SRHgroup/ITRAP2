@@ -10,11 +10,13 @@ pmhc_heatmap(
   patient = NULL,
   slot = "counts",
   clones_order = NULL,
+  split_cols = FALSE,
   hm_breaks = c(0, 4, 10),
   hm_palette = c("blue", "white", "red"),
+  pmhc_palette = NULL,
   condpalette = NULL,
   highlight_pmhc.tcr = NULL,
-  pmhc_palette = NULL,
+  stop_large_highlighting = T,
   rowm.fonts = 8,
   column_title_fonts = 10,
   column_title_rot = 45,
@@ -23,6 +25,8 @@ pmhc_heatmap(
   add_tcr_cluster = F,
   show_row_names = T,
   pmhc_subset = NULL,
+  custom_annotations = c(),
+  max_cols = 16000,
   ...
 )
 }
@@ -42,13 +46,11 @@ pMHC and clone annotations.}
 
 \item{hm_palette}{A vector of colors corresponding to \code{hm_breaks} for heatmap coloring.}
 
+\item{pmhc_palette}{A color palette for pMHCs, if differentiating by pMHC is desired.}
+
 \item{condpalette}{A color palette for conditioning variables, if applicable.}
 
 \item{highlight_pmhc.tcr}{Optional; specific pMHC-TCR interactions to highlight in the heatmap.}
-
-\item{pmhc_palette}{A color palette for pMHCs, if differentiating by pMHC is desired.}
-
-\item{rowm.fonts}{Font size for row names.}
 
 \item{column_title_fonts}{Font size for the column title.}
 

@@ -6,9 +6,10 @@
 \usage{
 assign_pmhc(
   object,
-  cl_size_thresh = 5,
   slot = "scale.data",
   assay = "pMHC",
+  cl_size_thresh = 3,
+  entropy_thresh = 1,
   gap_threshold = 1
 )
 }
@@ -16,12 +17,12 @@ assign_pmhc(
 \item{object}{(\code{Seurat}) A Seurat object that must be of the above described
 structure}
 
-\item{cl_size_thresh}{(\code{numeric}) from what clone size a clone will be smoothed}
-
 \item{slot}{(\code{character}) within what clot to perform smoothing, we recommend to
 smooth scaled by ScaleDataNoOutliers counts}
 
 \item{assay}{(\code{character}) name of the slot with pMHC counts, default "pMHC"}
+
+\item{cl_size_thresh}{(\code{numeric}) from what clone size a clone will be smoothed}
 
 \item{gap_threshold}{?????}
 
