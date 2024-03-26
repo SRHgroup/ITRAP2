@@ -351,8 +351,6 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
     column_title_gp = gpar(fontsize = column_title_fonts), 
     column_title_rot = column_title_rot,
     top_annotation=hm22ann)
-    
-  draw(pmhc_subset_hmap)
   
   if (!highlight_pmhc.tcr){
     return(pmhc_subset_hmap)
@@ -364,6 +362,7 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
     if (!is.null(split_cols)){
       stop('Highlightinh specificities in the clone splited heatmap is not supported')
     }
+    draw(pmhc_subset_hmap)
     tcr_pmhc <- ann_subset_ordered %>%
       dplyr::select(clone_id, pMHC_classification) %>%
       filter(!is.na(pMHC_classification) & pMHC_classification != 'Negative') %>%
