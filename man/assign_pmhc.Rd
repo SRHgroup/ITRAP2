@@ -10,7 +10,7 @@ assign_pmhc(
   assay = "pMHC",
   cl_size_thresh = 3,
   entropy_thresh = 1,
-  gap_threshold = 1
+  delta_threshold = 1
 )
 }
 \arguments{
@@ -24,9 +24,12 @@ smooth scaled by ScaleDataNoOutliers counts}
 
 \item{cl_size_thresh}{(\code{numeric}) from what clone size a clone will be smoothed}
 
-\item{gap_threshold}{?????}
+\item{entropy_thresh}{(\code{numeric}) pMHCs with higher than this threshold will be
+removed from TCR-pMHC pairing for clones smaller than cl_size_thresh. Meant for
+extremely noisy pMHCs.}
 
-\item{best_params}{(\code{list}) ignore it for now}
+\item{delta_threshold}{what should be a threshold that differentiates
+background from specificity signal, recommended from 0.7 to 1}
 }
 \value{
 (\code{Seurat}) with the ScaleData slot with scaled pMHC counts smoothed

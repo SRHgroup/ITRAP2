@@ -120,6 +120,8 @@ ScaleDataNoOutliers <- function(object, outlier=3) {
   
   object@assays$pMHC@scale.data <- as.matrix((object@assays$pMHC@data - apply(umi_matrix, 1, mean, na.rm = T)) / sds)
   
+  object@commands$ScaleDataNoOutliers <- T
+  
   return(object)
 }
 
@@ -147,6 +149,10 @@ ScaleDataNoOutliers <- function(object, outlier=3) {
 # Define the function as an S3 method for Seurat class
 smooth_pmhc <- function(object, best_params = NULL, slot='scale.data', assay = 'pMHC', cl_size_thresh = 3, 
                         span_val = 1, degree_val = 1, family_val = "gaussian") {
+  
+  if (is.null(object@commands$ScaleDataNoOutliers)){
+    stop('you have to run ScaleDataNoOutluers() before running smooth_pmhc')
+  }
   
   scaled_counts <- GetAssayData(object, assay = assay, slot = slot)
   
@@ -176,13 +182,18 @@ smooth_pmhc <- function(object, best_params = NULL, slot='scale.data', assay = '
   clones_with_errors <- c()
   
   total_iterations <- length(clone_ids)
-  iteration <- 0
   
+  # Initializes the progress bar
+  pb <- txtProgressBar(min = 0,      # Minimum value of the progress bar
+                       max = length(clone_ids), # Maximum value of the progress bar
+                       style = 3,    # Progress bar style (also available style = 1 and style = 2)
+                       width = 50,   # Progress bar width. Defaults to getOption("width")
+                       char = "+")   # Character used to create the bar
+  
+  index <- 0
   object@commands$smooth_pmhc <- list()
+  cat(sprintf('\nsmoothing each pMHC within each clone bogger than %d \n', cl_size_thresh))
   for (clone_id in clone_ids) {
-    iteration <- iteration + 1
-    cat(sprintf("Processing %d of %d\n", iteration, total_iterations))
-    cat(sprintf("smoothing all pmhcs for clone %s\n", clone_id))
     
     clone_cells <- which(clone_assignments == clone_id)
     
@@ -205,14 +216,14 @@ smooth_pmhc <- function(object, best_params = NULL, slot='scale.data', assay = '
                            family = family_val)
         
         smoothed_counts[pmhc,][clone_cells] <- predict(loess_fit)
-        #return(FALSE)
+        object@commands$smooth_pmhc[[clone_id]] <- 'done'
       }, error = function(e) {
-        print(paste0('error in fitting loess for pmhc ',pmhc, '|clone ', clone_id))
-        #return(TRUE)
+        cat(sprintf('\nerror in fitting loess for pmhc %d  in clone %d', pmhc, clone_id))
+        object@commands$smooth_pmhc[[clone_id]] <- 'error'
       })
-      
+      setTxtProgressBar(pb, index)
+      index <- index + 1
     }
-    object@commands$smooth_pmhc[[clone_id]] <- 'done'
   }
   
   smoothed_counts[is.nan(smoothed_counts)] <- 0
@@ -233,12 +244,15 @@ smooth_pmhc <- function(object, best_params = NULL, slot='scale.data', assay = '
 #'
 #' @param object (`Seurat`) A Seurat object that must be of the above described 
 #' structure 
-#' @param best_params (`list`) ignore it for now
 #' @param slot (`character`) within what clot to perform smoothing, we recommend to
 #' smooth scaled by ScaleDataNoOutliers counts
 #' @param assay (`character`) name of the slot with pMHC counts, default "pMHC"
+#' @param entropy_thresh (`numeric`) pMHCs with higher than this threshold will be
+#' removed from TCR-pMHC pairing for clones smaller than cl_size_thresh. Meant for
+#' extremely noisy pMHCs.
 #' @param cl_size_thresh (`numeric`) from what clone size a clone will be smoothed
-#' @param gap_threshold ?????
+#' @param delta_threshold what should be a threshold that differentiates 
+#' background from specificity signal, recommended from 0.7 to 1
 #' 
 #' @return (`Seurat`) with the ScaleData slot with scaled pMHC counts smoothed 
 #'
@@ -248,92 +262,110 @@ smooth_pmhc <- function(object, best_params = NULL, slot='scale.data', assay = '
 #' @export
 
 assign_pmhc <- function(object, slot='scale.data', assay='pMHC', 
-                        cl_size_thresh=3, entropy_thresh=1, gap_threshold = 1){
+                        cl_size_thresh=3, entropy_thresh=1, delta_threshold = 1){
+  
+  if (is.null(object@commands$smooth_pmhc)){
+    stop('you have to run smooth_pmhc() before running assign_pmhc')
+  }
+  if (is.null(object@misc$noise_score)){
+    stop('you have to run score_pmhc_noise() before running assign_pmhc')
+  }
+  if (is.null(object@misc$pmhc)){
+    object$pMHC_classification <- 'Negative'
+    cat('No pmhc barcode annotation is found in object@misc$pmhc')
+    return(object)
+  }
   
   clones <- object$clone_id[!is.na(object$clone_id)]
   big_clones <- names(table(clones)[table(clones) > 1])
   
-   if (is.null(object@misc$pmhc)){
-    object$pMHC_classification <- 'Negative'
-    cat('No pmhc barcode annotation is found in object@misc$pmhc')
-    return(object)
-  } else {
-    
-    clone_bulk <- AverageExpression(object %>% subset(clone_id %in% big_clones), 
-                                    assays = assay, group.by = 'clone_id', 
-                                    slot = slot, )$pMHC
-    
-    single_gem_obj <- subset(object, clone_size==1)
-    single_gems <- GetAssayData(single_gem_obj, layer='scale.data', assay='pMHC')
-    colnames(single_gems) <- single_gem_obj@meta.data$clone_id
-    
-    rm(single_gem_obj)
-    clone_bulk <- cbind(clone_bulk, single_gems)
+  cat('\naggregating clonotype aggregated pseudobulk pMHC matrix')
+  clone_bulk <- AverageExpression(object %>% subset(clone_id %in% big_clones), 
+                                  assays = assay, group.by = 'clone_id', 
+                                  slot = slot, )$pMHC
   
-    high_entropy_pmhc <- rownames(object@misc$noise_score)[object@misc$noise_score$noise_score > entropy_thresh]
-    small_clones <- colnames(clone_bulk)[colnames(clone_bulk) %in% object$clone_id[object$clone_size < cl_size_thresh]]
-      
-    clone_bulk[,small_clones][high_entropy_pmhc,] <- -10
+  single_gem_obj <- subset(object, clone_size==1)
+  single_gems <- GetAssayData(single_gem_obj, layer='scale.data', assay='pMHC')
+  colnames(single_gems) <- single_gem_obj@meta.data$clone_id
+  
+  rm(single_gem_obj)
+  clone_bulk <- cbind(clone_bulk, single_gems)
+  
+  cat(
+    sprintf("\nRemoving features with entropy smaller than %d for clones > than %d gems\n", 
+            entropy_thresh, cl_size_thresh))
+  high_entropy_pmhc <- rownames(object@misc$noise_score)[object@misc$noise_score$entropy > entropy_thresh]
+  small_clones <- colnames(clone_bulk)[colnames(clone_bulk) %in% object$clone_id[object$clone_size < cl_size_thresh]]
     
-    sds <- apply(clone_bulk, 2, sd) 
-    clone_bulk <- clone_bulk[,!colnames(clone_bulk) %in% names(sds[sds < .2])] 
+  clone_bulk[,small_clones][high_entropy_pmhc,] <- -10
+  
+  sds <- apply(clone_bulk, 2, sd) 
+  clone_bulk <- clone_bulk[,!colnames(clone_bulk) %in% names(sds[sds < .2])] 
+  
+  clone_outliers <- list()
+  
+  n_iter <- ncol(clone_bulk)
+  pb <- txtProgressBar(min = 0,      # Minimum value of the progress bar
+                       max = n_iter, # Maximum value of the progress bar
+                       style = 3,    # Progress bar style (also available style = 1 and style = 2)
+                       width = 50,   # Progress bar width. Defaults to getOption("width")
+                       char = "+")   # Character used to create the bar
+  
+  cat('\nassigning pMHC-TCR pairs\n')
+  for (i in 1:n_iter) {
     
-    clone_outliers <- list()
-    
-    for (i in 1:ncol(clone_bulk)) {
-      cat(sprintf('assigning %d out of %ds clones\n', i, ncol(clone_bulk)))
-      
-      cl_size <- object$clone_size[object$clone_id == colnames(clone_bulk)[i]] %>% unique() %>% drop.na()
-    
-        scores <- sort(clone_bulk[,i], decreasing = F)
-      scores[scores<0] <- 0
+    cl_size <- object$clone_size[object$clone_id == colnames(clone_bulk)[i]] %>% unique() %>% drop.na()
+  
+    scores <- sort(clone_bulk[,i], decreasing = F)
+    scores[scores<0] <- 0
 
-      diffs <- diff(scores)
-      #diffs[1:round(length(diffs)/2)] <- 0
+    diffs <- diff(scores)
+    #diffs[1:round(length(diffs)/2)] <- 0
+    
+    gap_pos <- which(diffs > delta_threshold)[1]
+    
+    if (!is.na(gap_pos)) {
+      outliers <- scores[(gap_pos+1):length(scores)]
       
-      gap_pos <- which(diffs > gap_threshold)[1]
+      noise_scores <- object@misc$noise_score[names(outliers),]$noise_score
+      concordance <- calculate_pmhc_concordance(
+        clone_obj = subset(object, clone_id == colnames(clone_bulk)[i]),
+        assay='pMHC', slot='scale.data')[names(outliers)] 
       
-      if (!is.na(gap_pos)) {
-        outliers <- scores[(gap_pos+1):length(scores)]
-        
-        noise_scores <- object@misc$noise_score[names(outliers),]$noise_score
-        concordance <- calculate_pmhc_concordance(
-          clone_obj = subset(object, clone_id == colnames(clone_bulk)[i]),
-          assay='pMHC', slot='scale.data')[names(outliers)] 
-        
-        confidence_scores <- calculate_confidence(noises = noise_scores, 
-                                                  concordances = concordance, 
-                                                  clone_size = cl_size)
-        
-        clone_outliers[[colnames(clone_bulk)[i]]] <- list(confidence_scores)
-      } else {
-        # Handle the case where no gap is found
-        clone_outliers[[colnames(clone_bulk)[i]]] <- list(c("Negative"=NA))
-      }
+      confidence_scores <- calculate_confidence(noises = noise_scores, 
+                                                concordances = concordance, 
+                                                clone_size = cl_size)
+      
+      clone_outliers[[colnames(clone_bulk)[i]]] <- list(confidence_scores)
+    } else {
+      # Handle the case where no gap is found
+      clone_outliers[[colnames(clone_bulk)[i]]] <- list(c("Negative"=NA))
     }
-    
-    pmhc_bc <- setNames(object@misc$pmhc$pmhc, object@misc$pmhc$Barcode)
-    df <- do.call(rbind, lapply(names(clone_outliers), function(x) {
-      data.frame(clone_id = x,
-                 pMHC_classification = if (clone_outliers[[x]] == "Negative") "Negative" else paste(
-                   names(clone_outliers[[x]][[1]]) %>% recode(!!!pmhc_bc), 
-                   collapse=":"),
-                 pMHC_confidence = if (clone_outliers[[x]] == "Negative") NA else paste(
-                   clone_outliers[[x]][[1]], 
-                   collapse=":"))
-    }
-    )
-    )
-    df$clone_id <- gsub('-','_', df$clone_id)
-    
-    object@meta.data <- object@meta.data %>% 
-      tibble::rownames_to_column('row_id') %>% 
-      select(-matches('^(pMHC_classification|pMHC_confidence)$')) %>%
-      left_join(df, by = 'clone_id') %>% 
-      tibble::column_to_rownames('row_id')
-    
-    return(object)
+    setTxtProgressBar(pb, i)
   }
+  
+  cat('\nmerging TCR-pMHC information into objects @meta.data\n')
+  pmhc_bc <- setNames(object@misc$pmhc$pmhc, object@misc$pmhc$Barcode)
+  df <- do.call(rbind, lapply(names(clone_outliers), function(x) {
+    data.frame(clone_id = x,
+               pMHC_classification = if (clone_outliers[[x]] == "Negative") "Negative" else paste(
+                 names(clone_outliers[[x]][[1]]) %>% recode(!!!pmhc_bc), 
+                 collapse=":"),
+               pMHC_confidence = if (clone_outliers[[x]] == "Negative") NA else paste(
+                 clone_outliers[[x]][[1]], 
+                 collapse=":"))
+  }
+  )
+  )
+  df$clone_id <- gsub('-','_', df$clone_id)
+  
+  object@meta.data <- object@meta.data %>% 
+    tibble::rownames_to_column('row_id') %>% 
+    select(-matches('^(pMHC_classification|pMHC_confidence)$')) %>%
+    left_join(df, by = 'clone_id') %>% 
+    tibble::column_to_rownames('row_id')
+  
+  return(object)
 }
 
 
