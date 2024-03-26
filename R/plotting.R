@@ -174,7 +174,7 @@ pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10, slot = 'counts
 #' @param condpalette A color palette for conditioning variables, if applicable.
 #' @param highlight_pmhc.tcr Optional; specific pMHC-TCR interactions to highlight in the heatmap.
 #' @param pmhc_palette A color palette for pMHCs, if differentiating by pMHC is desired.
-#' @pararowm.fonts Font size for row names.
+#' @param rowm.fonts Font size for row names.
 #' @param column_title_fonts Font size for the column title.
 #' @param column_title_rot Rotation angle for the column title.
 #' @param use_original_order Logical; whether to use the original order of clones.
@@ -198,7 +198,7 @@ pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10, slot = 'counts
 #' @export
 pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_order=NULL, split_cols=FALSE,
                          hm_breaks = c(0, 4, 10), hm_palette=c("blue", "white", "red"), pmhc_palette=NULL,
-                         condpalette=NULL, highlight_pmhc.tcr = NULL, stop_large_highlighting=T, rowm.fonts=8,  
+                         condpalette=NULL, highlight_pmhc.tcr=F, stop_large_highlighting=T, rowm.fonts=8,  
                          column_title_fonts = 10, column_title_rot = 45, use_original_order=T, clean_mat=F, 
                          add_tcr_cluster=F, show_row_names=T, pmhc_subset=NULL, custom_annotations=c(), max_cols=16000, ...){
   
@@ -288,17 +288,11 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
   if (clean_mat){
     positive_bc <- ann_subset$pMHC_classification[ann_subset$pMHC_classification != 'Negative']
     positive_bc <- positive_bc %>% unique() %>% 
-      strsplit(., split = ":", fixed = TRUE) %>% unlist() %>% unique()
+      strsplit(., ":", fixed = TRUE) %>% unlist() %>% unique()
     pmhc_mat = pmhc_mat[positive_bc,]
   }
   
   col_fun = colorRamp2(hm_breaks, hm_palette)
-  
-  if (split_cols){
-    split_cols <- ann_subset$clone_id
-  } else {
-    split_cols <- NULL
-  }
   
   if (ncol(pmhc_subset_) > max_cols) {
     set.seed(123) 
@@ -342,10 +336,16 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
     gap = unit(1, 'mm')
   )))
   
+  if (split_cols){
+    split_cols <- ann_subset[cells_order,]$clone_id
+  } else {
+    split_cols <- NULL
+  }
+  
   pmhc_subset_hmap <- Heatmap(
     pmhc_mat_ordered, name = "pmhc_subset_hmap",
     show_row_names = show_row_names, show_column_names = FALSE,
-    col = col_fun,
+    col = col_fun, column_split = split_cols,
     cluster_rows = F, cluster_columns = F,
     row_names_gp = grid::gpar(fontsize = rowm.fonts),  
     column_title_gp = gpar(fontsize = column_title_fonts), 
@@ -361,15 +361,23 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
       stop('highlighting more than 300 clones specificity usually crushes the session, \n
            if you want to continue, set stop_large_highlighting=F')
     }
+    if (!is.null(split_cols)){
+      stop('Highlightinh specificities in the clone splited heatmap is not supported')
+    }
     tcr_pmhc <- ann_subset_ordered %>%
       dplyr::select(clone_id, pMHC_classification) %>%
       filter(!is.na(pMHC_classification) & pMHC_classification != 'Negative') %>%
       unique() %>%
       separate_rows(pMHC_classification, sep=':')
     
-    for (i in 1:nrow(tcr_pmhc)){
-      cat(sprintf("highlighting %dth tcr-pmhc\n", i))
- 
+    n_iter <- nrow(tcr_pmhc)
+    pb <- txtProgressBar(min = 0,      # Minimum value of the progress bar
+                         max = n_iter, # Maximum value of the progress bar
+                         style = 3,    # Progress bar style (also available style = 1 and style = 2)
+                         width = 50,   # Progress bar width. Defaults to getOption("width")
+                         char = "+") 
+    
+    for (i in 1:n_iter){
       cell_ids_i <- ann_subset_ordered$clone_id == tcr_pmhc[i,]$clone_id
       cell_ids_i[is.na(cell_ids_i)] <- FALSE
       cell_ids_i <- match(rownames(ann_subset_ordered)[cell_ids_i], colnames(pmhc_mat_ordered))
@@ -393,7 +401,9 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
                     gp = gpar(col = "green", lwd = 2, fill = NA))
         }
       })
+      setTxtProgressBar(pb, i)
     }
+    close(pb)
   }
 }
 

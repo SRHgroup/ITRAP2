@@ -115,6 +115,8 @@ score_pmhc_noise <- function(object, how=c('per_clone', 'pseudobulk'), downsampl
       index <- index + 1
       setTxtProgressBar(pb, index)
     }
+    close(pb)
+    
     entropies_mean <- bind_cols(entropies) %>% rowMeans(na.rm = T)
     names(entropies_mean) <- pmhc_names
   } else if (how == 'pseudobulk') {
@@ -206,7 +208,7 @@ calculate_confidence <- function(entropy, concordances, clone_size, alpha = 1, b
   }
   
   # Calculate confidence score for each pMHC-TCR pair
-  confidence_scores <- alpha * concordances + beta * log(clone_size) - gamma * noises
+  confidence_scores <- alpha * concordances + beta * log(clone_size) - gamma * entropy
   
   return(round(confidence_scores, 2))
 }
