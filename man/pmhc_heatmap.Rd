@@ -15,7 +15,7 @@ pmhc_heatmap(
   hm_palette = c("blue", "white", "red"),
   pmhc_palette = NULL,
   condpalette = NULL,
-  highlight_pmhc.tcr = NULL,
+  highlight_pmhc.tcr = F,
   stop_large_highlighting = T,
   rowm.fonts = 8,
   column_title_fonts = 10,
@@ -51,6 +51,8 @@ pMHC and clone annotations.}
 \item{condpalette}{A color palette for conditioning variables, if applicable.}
 
 \item{highlight_pmhc.tcr}{Optional; specific pMHC-TCR interactions to highlight in the heatmap.}
+
+\item{rowm.fonts}{Font size for row names.}
 
 \item{column_title_fonts}{Font size for the column title.}
 

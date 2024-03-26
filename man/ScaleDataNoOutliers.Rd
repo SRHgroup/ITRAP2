@@ -4,7 +4,7 @@
 \alias{ScaleDataNoOutliers}
 \title{Perform the scaling with no outliers on your Seurat object}
 \usage{
-ScaleDataNoOutliers(object, outlier = 3)
+ScaleDataNoOutliers(object, outlier = 3, return_params = F)
 }
 \arguments{
 \item{object}{(\code{Seurat}) A Seurat object that must be of the above described

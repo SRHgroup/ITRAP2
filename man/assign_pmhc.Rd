@@ -8,6 +8,7 @@ assign_pmhc(
   object,
   slot = "scale.data",
   assay = "pMHC",
+  assign_small_clones = F,
   cl_size_thresh = 3,
   entropy_thresh = 1,
   delta_threshold = 1

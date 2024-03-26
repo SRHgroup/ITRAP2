@@ -80,27 +80,37 @@ super_scale <- function(umi_matrix, outlier=3, sd_fun=sd) {
 #'
 #' @export
 
-ScaleDataNoOutliers <- function(object, outlier=3) {
+ScaleDataNoOutliers <- function(object, outlier=3, return_params=F) {
   
    if(!is(object, "Seurat")) {
     stop("The provided object is not a Seurat object.")
   }
   
   umi_matrix <- object@assays$pMHC@counts
-  iter0 <- apply(umi_matrix, 1, sd, na.rm = T)
+  iter0 <- apply(umi_matrix, 1, sd, na.rm = TRUE)
   iter <- 0
   sds_iter <- list()
   sds_stats_iter <- list()
   
+  initial_outliers <- sum(abs(scale2(umi_matrix, sd_fun = sd)) > outlier, na.rm = TRUE)
+  current_outliers <- initial_outliers
+  pb <- txtProgressBar(min = 0, max = initial_outliers, style = 3)
+  
   while(any(abs(scale2(umi_matrix, sd_fun = sd)) > outlier, na.rm = TRUE)) {
     iter <- iter + 1
-    print(paste0('iteration ', iter))
+    cat(sprintf("\nIteration %d\n", iter))
     umi_matrix <- super_scale(umi_matrix, sd_fun = sd)
     nzeroes <- apply(umi_matrix, 1, function(x) sum(x[x != 0], na.rm = T))
     sds_stats_iter[[paste0('iteration=', iter)]] <- nzeroes
     
     sds_iter[[paste0('iteration=', iter)]] <- apply(umi_matrix, 1, sd, na.rm=T)
+    
+    # Update for progress bar
+    current_outliers <- sum(abs(scale2(umi_matrix, sd_fun = sd)) > outlier, na.rm = TRUE)
+    setTxtProgressBar(pb, initial_outliers - current_outliers)
   }
+  
+  close(pb)
   
   sds_iter[['iteration=0']] <- iter0
   sds_iter <- do.call(cbind, sds_iter)
@@ -122,7 +132,12 @@ ScaleDataNoOutliers <- function(object, outlier=3) {
   
   object@commands$ScaleDataNoOutliers <- T
   
-  return(object)
+  if (return_params){
+    return(list('object'=object,
+                'params'=sds_iter))
+  } else {
+    return(object)
+  }
 }
 
 #' Perform smoothing of scaled pMHC counts for every big clone in your Seurat object
@@ -192,7 +207,7 @@ smooth_pmhc <- function(object, best_params = NULL, slot='scale.data', assay = '
   
   index <- 0
   object@commands$smooth_pmhc <- list()
-  cat(sprintf('\nsmoothing each pMHC within each clone bogger than %d \n', cl_size_thresh))
+  cat(sprintf('\nsmoothing each pMHC within each clone bigger than %d \n', cl_size_thresh))
   for (clone_id in clone_ids) {
     
     clone_cells <- which(clone_assignments == clone_id)
@@ -225,6 +240,7 @@ smooth_pmhc <- function(object, best_params = NULL, slot='scale.data', assay = '
       index <- index + 1
     }
   }
+  close(pb)
   
   smoothed_counts[is.nan(smoothed_counts)] <- 0
   object@assays[[assay]]@scale.data <- smoothed_counts
@@ -261,14 +277,14 @@ smooth_pmhc <- function(object, best_params = NULL, slot='scale.data', assay = '
 #'
 #' @export
 
-assign_pmhc <- function(object, slot='scale.data', assay='pMHC', 
+assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_clones=F,
                         cl_size_thresh=3, entropy_thresh=1, delta_threshold = 1){
   
   if (is.null(object@commands$smooth_pmhc)){
     stop('you have to run smooth_pmhc() before running assign_pmhc')
   }
   if (is.null(object@misc$noise_score)){
-    stop('you have to run score_pmhc_noise() before running assign_pmhc')
+    stop('you have to run score_pmhc_noise() before running assign_pmhc with assign_small_clones=T')
   }
   if (is.null(object@misc$pmhc)){
     object$pMHC_classification <- 'Negative'
@@ -279,25 +295,27 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC',
   clones <- object$clone_id[!is.na(object$clone_id)]
   big_clones <- names(table(clones)[table(clones) > 1])
   
-  cat('\naggregating clonotype aggregated pseudobulk pMHC matrix')
+  cat('\naggregating clonotype aggregated pseudobulk pMHC matrix\n')
   clone_bulk <- AverageExpression(object %>% subset(clone_id %in% big_clones), 
                                   assays = assay, group.by = 'clone_id', 
                                   slot = slot, )$pMHC
   
-  single_gem_obj <- subset(object, clone_size==1)
-  single_gems <- GetAssayData(single_gem_obj, layer='scale.data', assay='pMHC')
-  colnames(single_gems) <- single_gem_obj@meta.data$clone_id
-  
-  rm(single_gem_obj)
-  clone_bulk <- cbind(clone_bulk, single_gems)
-  
-  cat(
-    sprintf("\nRemoving features with entropy smaller than %d for clones > than %d gems\n", 
-            entropy_thresh, cl_size_thresh))
-  high_entropy_pmhc <- rownames(object@misc$noise_score)[object@misc$noise_score$entropy > entropy_thresh]
-  small_clones <- colnames(clone_bulk)[colnames(clone_bulk) %in% object$clone_id[object$clone_size < cl_size_thresh]]
+  if (assign_small_clones){
+    single_gem_obj <- subset(object, clone_size==1)
+    single_gems <- GetAssayData(single_gem_obj, layer='scale.data', assay='pMHC')
+    colnames(single_gems) <- single_gem_obj@meta.data$clone_id
     
-  clone_bulk[,small_clones][high_entropy_pmhc,] <- -10
+    rm(single_gem_obj)
+    clone_bulk <- cbind(clone_bulk, single_gems)
+    
+    cat(
+      sprintf("\nRemoving features with entropy smaller than %f for clones > than %f gems\n", 
+              entropy_thresh, cl_size_thresh))
+    high_entropy_pmhc <- rownames(object@misc$noise_score)[object@misc$noise_score$entropy > entropy_thresh]
+    small_clones <- colnames(clone_bulk)[colnames(clone_bulk) %in% object$clone_id[object$clone_size < cl_size_thresh]]
+    
+    clone_bulk[,small_clones][high_entropy_pmhc,] <- -10
+  }
   
   sds <- apply(clone_bulk, 2, sd) 
   clone_bulk <- clone_bulk[,!colnames(clone_bulk) %in% names(sds[sds < .2])] 
@@ -327,12 +345,12 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC',
     if (!is.na(gap_pos)) {
       outliers <- scores[(gap_pos+1):length(scores)]
       
-      noise_scores <- object@misc$noise_score[names(outliers),]$noise_score
+      entropy <- object@misc$noise_score[names(outliers),]$entropy
       concordance <- calculate_pmhc_concordance(
         clone_obj = subset(object, clone_id == colnames(clone_bulk)[i]),
         assay='pMHC', slot='scale.data')[names(outliers)] 
       
-      confidence_scores <- calculate_confidence(noises = noise_scores, 
+      confidence_scores <- calculate_confidence(entropy = entropy, 
                                                 concordances = concordance, 
                                                 clone_size = cl_size)
       
