@@ -14,10 +14,10 @@ The scaled pMHC counts matrix will be stored in object@assays$pMHC@scale.data
 ![Screenshot 2024-03-06 at 12 43 22](https://github.com/SRHgroup/pmhc_denioseR/assets/45093246/8b7fbe80-e8b3-4af4-b496-9133cd167367)
 
 ```R
-ScaleDataNoOutliers(object)
+object <- ScaleDataNoOutliers(object)
 ```
 
-The next step is to estimate noisyness level of each pMHC, this is needed to assign a confidence score to each TCR-pMHC pair in the future.
+The next step is to estimate noisiness level of each pMHC, this is needed to assign a confidence score to each TCR-pMHC pair in the future.
 
 
 ```R
@@ -28,7 +28,7 @@ For the next step, we would like you to store your clonotype information in obje
 Next scaled counts are subjected to smoothing using local regression. The scaled matrix will be updated in object@assays$pMHC@scale.data.
 
 ```R
-smooth_pmhc(object)
+object <- smooth_pmhc(object)
 ```
 
 Next, we want to label each expanded clone with pMHC specificity, we do that by doing the outlier search within your pMHC panel, since we look at the relative to your pMHC panel values, 
@@ -40,7 +40,7 @@ matrix are the same as the pMHC.
 
 
 ```R
-assign_pmhc(object)
+object <- assign_pmhc(object)
 ```
 
 By the end of this step, your object@meta.data will have a column called  pMHC_classification, it can have multiple pMHCs recorded there, in case the clone is cross-reactive.
