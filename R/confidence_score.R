@@ -1,7 +1,3 @@
-drop.na <- function(vec){
-  vec[!is.na(vec)]
-}
-
 #' Calculate Entropy of a Numeric Vector
 #'
 #' Computes the entropy of a given numeric vector, with considerations for
@@ -19,7 +15,7 @@ drop.na <- function(vec){
 #' calc_entropy(vec)
 #'
 #' @export
-calc_entropy <- function(vec) {
+calc_entropy <- function(vec, quantiles) {
   
   no0propo <- sum(vec!=0)/length(vec)
   if (no0propo < 0.1){
@@ -30,14 +26,13 @@ calc_entropy <- function(vec) {
         return(0) 
       }
       
-      q <- quantile(vec, probs = 0:4/4, na.rm = TRUE, names = FALSE) %>% 
-        unique()
+      quantiles <- quantiles %>% unique()
       
-      if(length(q) < 2) { 
+      if(length(quantiles) < 2) { 
         return(0)
       }
       
-      bins <- cut(vec, breaks = q, include.lowest = TRUE, labels = FALSE)
+      bins <- cut(vec, breaks = quantiles, include.lowest = TRUE, labels = FALSE)
       prob_dist <- table(bins) / sum(!is.na(bins))
       entropy <- -sum(prob_dist * log2(prob_dist + 1e-9)) # Adding epsilon to avoid log(0)
       return(entropy)
@@ -99,6 +94,11 @@ score_pmhc_noise <- function(object, how=c('per_clone', 'pseudobulk'), downsampl
 
   entropies <- list()
   
+  pmhc_quantiles <- apply(GetAssayData(object, assay = 'pMHC', layer = 'counts'),
+                          1, function(vec) quantile(vec, probs = c(.2, .4, .6, .8, 1), 
+                                                    na.rm = TRUE, names = FALSE), 
+                          simplify = F)
+  
   if (how == 'per_clone'){
     # Initializes the progress bar
     pb <- txtProgressBar(min = 0,      # Minimum value of the progress bar
@@ -109,9 +109,11 @@ score_pmhc_noise <- function(object, how=c('per_clone', 'pseudobulk'), downsampl
     index <- 0
     cat('\ncalculating pMHC entropy on per clone basis\n')
     for (cl in downsampled_clones){
-      entropies[[cl]] <- apply(GetAssayData(subset(object, clone_id==cl), 
-                                            layer='counts', assay='pMHC'), 
-                               1, calc_entropy)
+      data_matrix <- GetAssayData(subset(object, clone_id==cl), layer='counts', assay='pMHC')
+      rows_list <- split(data_matrix[pmhc_names,], pmhc_names)
+      
+      entropies <- mapply(calc_entropy, rows_list[pmhc_names], pmhc_quantiles[pmhc_names])
+      
       index <- index + 1
       setTxtProgressBar(pb, index)
     }
@@ -121,10 +123,13 @@ score_pmhc_noise <- function(object, how=c('per_clone', 'pseudobulk'), downsampl
     names(entropies_mean) <- pmhc_names
   } else if (how == 'pseudobulk') {
     cat('\ncalculating pMHC entropy in pseudobulk mode\n')
-    entropies_mean <- apply(AverageExpression(subset(object, clone_id %in% downsampled_clones), 
-                                              layer='counts', group.by = 'clone_id', assays = 'pMHC')$pMHC,
-                            1, calc_entropy)
+    data_matrix <- AverageExpression(subset(object, clone_id %in% downsampled_clones), 
+                                     layer='counts', group.by = 'clone_id', assays = 'pMHC')$pMHC
     
+    rows_list <- split(data_matrix[pmhc_names,], pmhc_names)
+    
+    entropies_mean <- mapply(calc_entropy, rows_list[pmhc_names], pmhc_quantiles[pmhc_names])
+    names(entropies_mean) <- pmhc_names
   }
   
   object@misc$noise_score <-  data.frame(nonzero_ratio = nonzero[pmhc_names], 
@@ -279,7 +284,9 @@ filter_pmhc <- function(object, confidence_cutoff) {
   return(object)
 }
 
-                   
+drop.na <- function(vec){
+  vec[!is.na(vec)]
+}
 
 
 
