@@ -4,7 +4,7 @@
 \alias{calc_entropy}
 \title{Calculate Entropy of a Numeric Vector}
 \usage{
-calc_entropy(vec)
+calc_entropy(vec, quantiles)
 }
 \arguments{
 \item{vec}{(\code{numeric}) A numeric vector for which entropy is to be calculated.}

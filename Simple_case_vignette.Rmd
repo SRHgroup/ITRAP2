@@ -8,7 +8,6 @@ output:
 ---
 
 
-
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(dev='CairoPNG', fig.width=10, fig.height=6, dpi=300)
 ```
@@ -79,7 +78,7 @@ Look at this clone and pMHC counts distributions, on the left we can see that tw
 
 Next we want to estimate the level of noisyness of each pMHC, we can do that by calculating an entropy ( https://en.wikipedia.org/wiki/Entropy_(information_theory) ) for each pMHC, the pMHCs with highest entropy are expected to be the noisiest
 
-```{r echo=FALSE, message=FALSE, warning=FALSE}
+```{r echo=TRUE, message=FALSE, warning=FALSE}
 viral_screen <- score_pmhc_noise(viral_screen, how = 'per_clone', downsample_rate = .1)
 
 hm_noise <- pmhc_heatmap(object = obj_sub, slot = 'counts', hm_breaks = c(0, 5, 10), 
