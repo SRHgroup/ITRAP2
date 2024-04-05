@@ -247,7 +247,7 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
   
   pat_pmhc <- pat_pmhc[pat_pmhc %in% rownames(object@assays$pMHC@counts)]
   
-  pmhc_subset_ <- GetAssayData(object, slot = slot, assay = 'pMHC')
+  pmhc_subset_ <- GetAssayData(object, layer = slot, assay = 'pMHC')
   pmhc_subset_ <- pmhc_subset_[,cells_subset][pat_pmhc,]
   
   pmhc_subset_ann <- object@misc$pmhc %>%

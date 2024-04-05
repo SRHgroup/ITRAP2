@@ -169,12 +169,6 @@ smooth_pmhc <- function(object, best_params = NULL, slot='scale.data', assay = '
     stop('you have to run ScaleDataNoOutluers() before running smooth_pmhc')
   }
   
-  scaled_counts <- GetAssayData(object, assay = assay, slot = slot)
-  
-  clone_assignments <- object$clone_id#[!is.na(object$clone_id)]
-  
-  clone_ids <- unique(clone_assignments)
-  
   if (!"clone_size" %in% names(object@meta.data)) {
     object@meta.data <- object@meta.data %>%
       tibble::rownames_to_column('row_id') %>% 
@@ -186,21 +180,30 @@ smooth_pmhc <- function(object, best_params = NULL, slot='scale.data', assay = '
     object$clone_size[is.na(object$clone_id)] <- NA
   }
   
-  bigger_thanXcells <- object$clone_id[object$clone_size > cl_size_thresh] %>% unique()
-  clone_ids <- clone_ids[clone_ids %in% bigger_thanXcells & !is.na(clone_ids)] %>% unique()
+  bigger_thanXclones <- object$clone_id[object$clone_size > cl_size_thresh & !is.na(object$clone_size)] %>% unique()
   
   pmhcs <- rownames(scaled_counts)
   
-  smoothed_counts <- matrix(0, nrow = nrow(scaled_counts), ncol = ncol(scaled_counts),
-                            dimnames = dimnames(scaled_counts))
+  smoothable_cells <- Cells(object)[object$clone_id %in% bigger_thanXclones]
+  unsmoothable_cells <- Cells(object)[!Cells(object) %in% smoothable_cells]
   
-  clones_with_errors <- c()
+  smoothed_counts <- matrix(0, 
+                            nrow = length(pmhcs), 
+                            ncol = length(smoothable_cells),
+                            dimnames = list(pmhcs, smoothable_cells))
   
-  total_iterations <- length(clone_ids)
+  scaled_counts <- GetAssayData(object, assay = assay, layer = slot)
+  unsmoothable_counts <- scaled_counts[, unsmoothable_cells]
+  
+  scaled_counts <- scaled_counts[, smoothable_cells]
+  
+  clone_assignments <- object@meta.data[smoothable_cells,]$clone_id
+  
+  total_iterations <- length(bigger_thanXclones)
   
   # Initializes the progress bar
   pb <- txtProgressBar(min = 0,      # Minimum value of the progress bar
-                       max = length(clone_ids), # Maximum value of the progress bar
+                       max = total_iterations, # Maximum value of the progress bar
                        style = 3,    # Progress bar style (also available style = 1 and style = 2)
                        width = 50,   # Progress bar width. Defaults to getOption("width")
                        char = "+")   # Character used to create the bar
@@ -208,7 +211,7 @@ smooth_pmhc <- function(object, best_params = NULL, slot='scale.data', assay = '
   index <- 0
   object@commands$smooth_pmhc <- list()
   cat(sprintf('\nsmoothing each pMHC within each clone bigger than %d \n', cl_size_thresh))
-  for (clone_id in clone_ids) {
+  for (clone_id in bigger_thanXclones) {
     
     clone_cells <- which(clone_assignments == clone_id)
     
@@ -218,7 +221,6 @@ smooth_pmhc <- function(object, best_params = NULL, slot='scale.data', assay = '
       
       error_occurred <- tryCatch({
         # Default parameters
-        
         if (!is.null(best_params[[pmhc]])) {
           span_val <- best_params[[pmhc]][1] %>% as.numeric()
           degree_val <- best_params[[pmhc]][2] %>% as.numeric()
@@ -233,17 +235,18 @@ smooth_pmhc <- function(object, best_params = NULL, slot='scale.data', assay = '
         smoothed_counts[pmhc,][clone_cells] <- predict(loess_fit)
         object@commands$smooth_pmhc[[clone_id]] <- 'done'
       }, error = function(e) {
-        cat(sprintf('\nerror in fitting loess for pmhc %d  in clone %d', pmhc, clone_id))
+        cat(sprintf('\nerror in fitting loess for pmhc %s  in clone %s', pmhc, clone_id))
         object@commands$smooth_pmhc[[clone_id]] <- 'error'
       })
       setTxtProgressBar(pb, index)
-      index <- index + 1
     }
+    index <- index + 1
   }
   close(pb)
   
+  smoothed_counts <- cbind(smoothed_counts, unsmoothable_counts)
   smoothed_counts[is.nan(smoothed_counts)] <- 0
-  object@assays[[assay]]@scale.data <- smoothed_counts
+  object@assays[[assay]]@scale.data <- smoothed_counts[, Cells(object)]
   
   return(object)
 }
@@ -296,9 +299,9 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_cl
   big_clones <- names(table(clones)[table(clones) > 1])
   
   cat('\naggregating clonotype aggregated pseudobulk pMHC matrix\n')
-  clone_bulk <- AverageExpression(object %>% subset(clone_id %in% big_clones), 
-                                  assays = assay, group.by = 'clone_id', 
-                                  slot = slot, )$pMHC
+  clone_bulk <- ClonePseudobulk(object %>% subset(clone_id %in% big_clones), 
+                                assay = assay, clone_col = 'clone_id', 
+                                slot = slot)
   
   if (assign_small_clones){
     single_gem_obj <- subset(object, clone_size==1)
@@ -309,7 +312,7 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_cl
     clone_bulk <- cbind(clone_bulk, single_gems)
     
     cat(
-      sprintf("\nRemoving features with entropy smaller than %f for clones > than %f gems\n", 
+      sprintf("\nRemoving features with entropy smaller than %d for clones > than %d gems\n", 
               entropy_thresh, cl_size_thresh))
     high_entropy_pmhc <- rownames(object@misc$noise_score)[object@misc$noise_score$entropy > entropy_thresh]
     small_clones <- colnames(clone_bulk)[colnames(clone_bulk) %in% object$clone_id[object$clone_size < cl_size_thresh]]

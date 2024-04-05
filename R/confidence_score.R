@@ -284,9 +284,4 @@ filter_pmhc <- function(object, confidence_cutoff) {
   return(object)
 }
 
-drop.na <- function(vec){
-  vec[!is.na(vec)]
-}
-
-
 
