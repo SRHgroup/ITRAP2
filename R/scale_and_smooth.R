@@ -182,8 +182,6 @@ smooth_pmhc <- function(object, best_params = NULL, slot='scale.data', assay = '
   
   bigger_thanXclones <- object$clone_id[object$clone_size > cl_size_thresh & !is.na(object$clone_size)] %>% unique()
   
-  pmhcs <- rownames(scaled_counts)
-  
   smoothable_cells <- Cells(object)[object$clone_id %in% bigger_thanXclones]
   unsmoothable_cells <- Cells(object)[!Cells(object) %in% smoothable_cells]
   
@@ -193,6 +191,8 @@ smooth_pmhc <- function(object, best_params = NULL, slot='scale.data', assay = '
                             dimnames = list(pmhcs, smoothable_cells))
   
   scaled_counts <- GetAssayData(object, assay = assay, layer = slot)
+  pmhcs <- rownames(scaled_counts)
+  
   unsmoothable_counts <- scaled_counts[, unsmoothable_cells]
   
   scaled_counts <- scaled_counts[, smoothable_cells]
