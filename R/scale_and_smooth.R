@@ -185,13 +185,13 @@ smooth_pmhc <- function(object, best_params = NULL, slot='scale.data', assay = '
   smoothable_cells <- Cells(object)[object$clone_id %in% bigger_thanXclones]
   unsmoothable_cells <- Cells(object)[!Cells(object) %in% smoothable_cells]
   
+  scaled_counts <- GetAssayData(object, assay = assay, layer = slot)
+  pmhcs <- rownames(scaled_counts)
+  
   smoothed_counts <- matrix(0, 
                             nrow = length(pmhcs), 
                             ncol = length(smoothable_cells),
                             dimnames = list(pmhcs, smoothable_cells))
-  
-  scaled_counts <- GetAssayData(object, assay = assay, layer = slot)
-  pmhcs <- rownames(scaled_counts)
   
   unsmoothable_counts <- scaled_counts[, unsmoothable_cells]
   
