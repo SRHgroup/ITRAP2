@@ -5,7 +5,7 @@
 \alias{viral_screen}
 \title{Viral screen, data example for pmhcDenoiseR}
 \format{
-A data frame with 50 rows and 2 variables:
+Seurat object with 100 pMHCs
 \describe{
 \item{viral_screen}{PBMC T cells, screen for chronic viral epitopes}
 }

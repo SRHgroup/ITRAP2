@@ -4,17 +4,17 @@
 #' with 0.001 not to cause a division by zero during the scaling
 #'
 #' @param mat A numeric matrix (`matrix`).
-#' @param sd_sun, function (`function`) that calculates sd, functions are expected to
+#' @param sd_fun, function (`function`) that calculates sd, functions are expected to
 #' have na.rm parameter to remove NA values
 #'
 #' @return a mean ceantered and median scaled matrix (`matrix`)
 #'
 #' @examples
 #' scale2(mat)
-#' scale2(mat, sd_fun=sd, replace_zero=T)
+#' scale2(mat, sd_fun=sd)
 #'
 #' @export
-scale2 <- function(mat, sd_fun = sd, replace_zero=F) {
+scale2 <- function(mat, sd_fun = sd) {
   
   if(is.vector(mat)) {
     mean <- mean(mat, na.rm = T)
@@ -29,9 +29,6 @@ scale2 <- function(mat, sd_fun = sd, replace_zero=F) {
     means <- apply(mat, 1, mean, na.rm = T)
     sds <- apply(mat, 1, function(x) sd_fun(x, na.rm = T))
     
-    if (replace_zero){
-      sds[sds == 0] <- .0001
-    }
     return( (mat - means) / sds )
   }
 }
@@ -42,13 +39,13 @@ scale2 <- function(mat, sd_fun = sd, replace_zero=F) {
 #' removing outliers from sd estimation
 #'
 #'
-#' @param mat A numeric matrix (`matrix`).
+#' @param umi_matrix A numeric matrix (`matrix`).
 #' @param outlier (`numeric`) from what z-score a value is considered an outlier
-#'
+#' @param sd_fun (`function`) what function to use to calculate standard deviation
 #' @return a mean ceatered and median scaled matrix (`matrix`)
 #'
 #' @examples
-#' super_scale(mat)
+#' super_scale(umi_matrix=mat)
 #'
 #' @export
 
@@ -71,6 +68,8 @@ super_scale <- function(umi_matrix, outlier=3, sd_fun=sd) {
 #' @param object (`Seurat`) A Seurat object that must be of the above described 
 #' structure 
 #' @param outlier (`numeric`) from what z-score a value is considered an outlier
+#' @param return_params (`logical`) whether you want to return a lust sds and 
+#' means along with the object
 #'
 #' @return (`Seurat`) with the ScaleData slot in pMHC assay filled with scaled 
 #' pMGC matrix
@@ -153,6 +152,9 @@ ScaleDataNoOutliers <- function(object, outlier=3, return_params=F) {
 #' smooth scaled by ScaleDataNoOutliers counts
 #' @param assay (`character`) name of the slot with pMHC counts, default "pMHC"
 #' @param cl_size_thresh (`numeric`) from what clone size a clone will be smoothed
+#' @param span_val (`numeric`) value for span parameter in loess
+#' @param degree_val (`numeric`) value for degree parameter in loess
+#' @param family_val (`character`) value for family parameter in loess
 #' 
 #' @return (`Seurat`) with the ScaleData slot with scaled pMHC counts smoothed 
 #'
@@ -246,7 +248,7 @@ smooth_pmhc <- function(object, best_params = NULL, slot='scale.data', assay = '
   
   smoothed_counts <- cbind(smoothed_counts, unsmoothable_counts)
   smoothed_counts[is.nan(smoothed_counts)] <- 0
-  object@assays[[assay]]@scale.data <- smoothed_counts[, Cells(object)]
+  object@assays[[assay]]@scale.data <- as.matrix(smoothed_counts[, Cells(object)])
   
   return(object)
 }
@@ -272,6 +274,10 @@ smooth_pmhc <- function(object, best_params = NULL, slot='scale.data', assay = '
 #' @param cl_size_thresh (`numeric`) from what clone size a clone will be smoothed
 #' @param delta_threshold what should be a threshold that differentiates 
 #' background from specificity signal, recommended from 0.7 to 1
+#' @param assign_small_clones (`logical`) whether you want to assign pMHC to small
+#' clones (<cl_size_thresh), smaller clones result in less confidence, so if 
+#' you aim for high precision you may want to skip them, this will also make the 
+#' assignment run way faster
 #' 
 #' @return (`Seurat`) with the ScaleData slot with scaled pMHC counts smoothed 
 #'
@@ -312,7 +318,7 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_cl
     clone_bulk <- cbind(clone_bulk, single_gems)
     
     cat(
-      sprintf("\nRemoving features with entropy smaller than %d for clones > than %d gems\n", 
+      sprintf("\nRemoving features with entropy smaller than %g for clones > than %g gems\n", 
               entropy_thresh, cl_size_thresh))
     high_entropy_pmhc <- rownames(object@misc$noise_score)[object@misc$noise_score$entropy > entropy_thresh]
     small_clones <- colnames(clone_bulk)[colnames(clone_bulk) %in% object$clone_id[object$clone_size < cl_size_thresh]]
