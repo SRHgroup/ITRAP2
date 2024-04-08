@@ -29,9 +29,9 @@ ClonePseudobulk <- function(object, assay = "pMHC", slot = "scale.data", clone_c
     stop(paste("Metadata column", clone_col, "not found in the Seurat object."))
   }
   
-  group_ids <- object@meta.data[[clone_col]] 
-  
+  group_ids <- setNames(object = object@meta.data[[clone_col]], nm = Cells(object)) 
   unique_groups <- unique(group_ids) %>% drop.na()
+  
   pseudobulk_means <- sapply(unique_groups, function(group) {
     cells_in_group <- names(group_ids[group_ids == group])
     

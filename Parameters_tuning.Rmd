@@ -1,0 +1,73 @@
+---
+title: "paremeters_tuning"
+author: "Grigorii Nos"
+date: "2024-04-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(dev='CairoPNG', fig.width=10, fig.height=6, dpi=300)
+```
+
+## Parameters tuning for pMHC-TCR assigments
+
+In this vignette we will explore how different parameters affect TCR-pMHC assigment
+and how to tune them. 
+
+```{r load_packages, echo=FALSE, message=FALSE, warning=FALSE}
+library(Seurat)
+library(pmhcDenoiseR)
+library(uniformly)
+library(tidyverse)
+library(ggplot2)
+library(ComplexHeatmap)
+```
+
+Let's load downsampled 10x dataset, that includes 51273 from 1000 clones. 1000 clones
+were downsampled from a bigger dataset to save us some computational time. 
+
+```{r}
+data('10x_dataset')
+
+tenx.data@assays$pMHC@counts[,1:5] %>% head()
+```
+
+let's asses the noise level for each pMHC and determine from what Entropy value
+we want to skip pMHC features from TCR-pMHC assigment, if the clone is small in size
+
+```{r}
+hm_noise <- pmhc_heatmap(object = tenx.data, slot='counts', clones = downsampled_clones, clones_order = NULL,
+                         highlight_pmhc.tcr=F, hm_breaks = c(0, 5, 10), split_cols = F,
+                         show_row_names = T, clean_mat = F, max_cols = 10000)
+
+left_ann_entropy <- rowAnnotation(
+  entropy = anno_barplot(tenx.data@misc$noise_score$entropy,
+                         width = unit(1, "cm"), 
+                         gp = gpar(fill = "blue"),
+                         axis_param = list(direction = "reverse")))
+
+left_ann_entropy + hm_noise
+
+```
+The appropriate threshold seems to be around 0.7
+
+This data is already pre-scaled (without downsampling using 208589 gems) 
+and pre-smoothed. Here we will explore delta, major parameter for pmhc_assign.
+
+Let see what happens with delta=1
+
+```{r}
+tenx.data <- assign_pmhc(object = tenx.data, cl_size_thresh = 3, 
+                         entropy_thresh = 0.7, 
+                         assign_small_clones = T,
+                         delta_threshold = 1)
+
+pmhc_heatmap(object = tenx.data, stop_large_highlighting = F,
+             slot='counts', clones = downsampled_clones, clones_order = NULL,
+             highlight_pmhc.tcr=T, hm_breaks = c(-5, 0, 5), split_cols = F,
+             show_row_names = T, clean_mat = F, max_cols = 10000)
+```
+
+
+
+
