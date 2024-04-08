@@ -1,5 +1,5 @@
 Package: pmhcDenoiseR
-Title: pMHC denoising and pMHC-TCR assigment. 
+Title: pMHC denoising and pMHC-TCR assigment
 Version: 0.0.0.9000
 Authors@R: 
     person("Grigorii", "Nos", , "nosgrigoriy@gmail.com", role = c("aut", "cre"),
@@ -7,15 +7,22 @@ Authors@R:
 Description: pmhcDenoiseR is a data denoising workflow for single-cell pMHC datasets. The workflow also assigns the 
              pMHC specificities to individual clonotypes. pmhcDenoiseR works with coupled single-cell pMHC counts with TCR clonotypes.
 Imports: 
-    Seurat (== 4.4.0),
+    Seurat,
     tidyverse,
     ggplot2,
-    uniformly
+    uniformly,
+    ComplexHeatmap, 
+    RColorBrewer, 
+    circlize, 
+    cowplot, 
+    dplyr,
+    tidyr
 Suggests: 
     knitr,
     rmarkdown
+LazyData: true
 VignetteBuilder: knitr
-License: MIT + file LICENSE
 Encoding: UTF-8
+License: DTU
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.1

@@ -27,6 +27,12 @@ smooth scaled by ScaleDataNoOutliers counts}
 \item{assay}{(\code{character}) name of the slot with pMHC counts, default "pMHC"}
 
 \item{cl_size_thresh}{(\code{numeric}) from what clone size a clone will be smoothed}
+
+\item{span_val}{(\code{numeric}) value for span parameter in loess}
+
+\item{degree_val}{(\code{numeric}) value for degree parameter in loess}
+
+\item{family_val}{(\code{character}) value for family parameter in loess}
 }
 \value{
 (\code{Seurat}) with the ScaleData slot with scaled pMHC counts smoothed
