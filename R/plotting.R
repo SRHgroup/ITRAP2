@@ -216,20 +216,11 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
   
   cells_subset <- Cells(object)[(object$clone_id %in% clones) & !is.na(object$clone_id)]
   
-  if (!'pMHC_maxID' %in% colnames(object@meta.data)){
-    pMHC_maxID <- apply(GetAssayData(object, assay = 'pMHC', slot=slot), 2, 
-                        function(x) rownames(GetAssayData(object, assay = 'pMHC', slot=slot))[which.max(x)])
-    
-    pmhc_bc <- object@misc$pmhc$pmhc
-    names(pmhc_bc) <- object@misc$pmhc$Barcode
-    object$pMHC_maxID <- recode(pMHC_maxID, !!!pmhc_bc)
-  }
-  
   if (!'pMHC_classification' %in% colnames(object@meta.data)){
     object$pMHC_classification <- NA
   }
   
-  ann_columns <- c("clone_id", "pMHC_maxID", "pMHC_classification", custom_annotations)
+  ann_columns <- c("clone_id", "pMHC_classification", custom_annotations)
   ann_subset <- object@meta.data %>%
     select(all_of(ann_columns)) %>%
     filter(row.names(.) %in% cells_subset) %>%
