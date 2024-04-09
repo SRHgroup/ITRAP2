@@ -8,6 +8,9 @@ calc_entropy(vec, quantiles)
 }
 \arguments{
 \item{vec}{(\code{numeric}) A numeric vector for which entropy is to be calculated.}
+
+\item{quantiles}{(\code{numeric}) vector with the quantiles, expected to receive
+pMHC values quantiles or 25, 50, 75\%}
 }
 \value{
 Returns the calculated entropy of the vector. If the proportion of non-zero

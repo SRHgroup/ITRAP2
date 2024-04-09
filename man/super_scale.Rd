@@ -7,9 +7,11 @@
 super_scale(umi_matrix, outlier = 3, sd_fun = sd)
 }
 \arguments{
+\item{umi_matrix}{A numeric matrix (\code{matrix}).}
+
 \item{outlier}{(\code{numeric}) from what z-score a value is considered an outlier}
 
-\item{mat}{A numeric matrix (\code{matrix}).}
+\item{sd_fun}{(\code{function}) what function to use to calculate standard deviation}
 }
 \value{
 a mean ceatered and median scaled matrix (\code{matrix})
@@ -19,6 +21,6 @@ Performs scaling of the matrix iteratively,
 removing outliers from sd estimation
 }
 \examples{
-super_scale(mat)
+super_scale(umi_matrix=mat)
 
 }

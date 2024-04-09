@@ -4,12 +4,12 @@
 \alias{scale2}
 \title{Centers and scales a rows in numeric matrix}
 \usage{
-scale2(mat, sd_fun = sd, replace_zero = F)
+scale2(mat, sd_fun = sd)
 }
 \arguments{
 \item{mat}{A numeric matrix (\code{matrix}).}
 
-\item{sd_sun, }{function (\code{function}) that calculates sd, functions are expected to
+\item{sd_fun, }{function (\code{function}) that calculates sd, functions are expected to
 have na.rm parameter to remove NA values}
 }
 \value{
@@ -21,6 +21,6 @@ with 0.001 not to cause a division by zero during the scaling
 }
 \examples{
 scale2(mat)
-scale2(mat, sd_fun=sd, replace_zero=T)
+scale2(mat, sd_fun=sd)
 
 }

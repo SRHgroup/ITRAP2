@@ -11,6 +11,9 @@ ScaleDataNoOutliers(object, outlier = 3, return_params = F)
 structure}
 
 \item{outlier}{(\code{numeric}) from what z-score a value is considered an outlier}
+
+\item{return_params}{(\code{logical}) whether you want to return a lust sds and
+means along with the object}
 }
 \value{
 (\code{Seurat}) with the ScaleData slot in pMHC assay filled with scaled

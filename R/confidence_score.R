@@ -5,6 +5,8 @@
 #' distribution of values across quantile-derived bins.
 #'
 #' @param vec (`numeric`) A numeric vector for which entropy is to be calculated.
+#' @param quantiles (`numeric`) vector with the quantiles, expected to receive 
+#' pMHC values quantiles or 25, 50, 75% 
 #'
 #' @return Returns the calculated entropy of the vector. If the proportion of non-zero
 #' values is less than 0.1, or if the vector lacks sufficient unique values, the function
@@ -283,10 +285,5 @@ filter_pmhc <- function(object, confidence_cutoff) {
   
   return(object)
 }
-
-drop.na <- function(vec){
-  vec[!is.na(vec)]
-}
-
 
 

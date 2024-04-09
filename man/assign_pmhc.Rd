@@ -23,6 +23,11 @@ smooth scaled by ScaleDataNoOutliers counts}
 
 \item{assay}{(\code{character}) name of the slot with pMHC counts, default "pMHC"}
 
+\item{assign_small_clones}{(\code{logical}) whether you want to assign pMHC to small
+clones (<cl_size_thresh), smaller clones result in less confidence, so if
+you aim for high precision you may want to skip them, this will also make the
+assignment run way faster}
+
 \item{cl_size_thresh}{(\code{numeric}) from what clone size a clone will be smoothed}
 
 \item{entropy_thresh}{(\code{numeric}) pMHCs with higher than this threshold will be
