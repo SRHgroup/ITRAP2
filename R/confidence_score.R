@@ -167,18 +167,35 @@ score_pmhc_noise <- function(object, how=c('per_clone', 'pseudobulk'), downsampl
 #' concordance_specific <- calculate_pmhc_concordance(clone_obj, preserve_pmhc = c("pmhc1", "pmhc2"))
 #' 
 #' @export
-calculate_pmhc_concordance <- function(clone_obj, preserve_pmhc=NULL, slot='counts', assay='pMHC'){
+calculate_pmhc_concordance <- function(clone_obj, exclude_top_pmhc = TRUE, 
+                                       slot = 'counts', assay = 'pMHC') {
   
-  pmhc_counts <- GetAssayData(clone_obj, slot = slot, assay = assay)
-  
-  if (!is.null(preserve_pmhc)){
-    pmhc_counts <- pmhc_counts[preserve_pmhc,]
+  if (!is.logical(exclude_top_pmhc) || length(exclude_top_pmhc) != 1) {
+    stop("The parameter 'exclude_top_pmhc' must be a single Boolean value (TRUE or FALSE).")
   }
   
-  max_vals <- apply(pmhc_counts, 2, max)
-  max_counts <- apply(pmhc_counts, 1, function(row) sum(row == max_vals))
+  pmhc_counts <- GetAssayData(clone_obj, layer = slot, assay = assay)
   
-  concordance <- max_counts/ncol(pmhc_counts)
+  calc_concordance <- function(data) {
+    max_vals <- apply(data, 2, max)
+    max_counts <- apply(data, 1, function(row) sum(row == max_vals))
+    concordance <- max_counts / ncol(data)
+    return(concordance)
+  }
+  
+  concordance <- calc_concordance(pmhc_counts)
+  
+  if (exclude_top_pmhc){
+    
+    order_concordance <- order(concordance, decreasing = TRUE)
+    highest_index <- order_concordance[1]
+    second_highest_index <- order_concordance[2]
+    
+    pmhc_counts_excluded <- pmhc_counts[-highest_index, , drop = FALSE]
+    adjusted_concordance <- calc_concordance(pmhc_counts_excluded)
+    
+    concordance[second_highest_index] <- adjusted_concordance[second_highest_index]
+  }
   
   return(concordance)
 }

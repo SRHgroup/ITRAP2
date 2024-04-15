@@ -6,7 +6,7 @@
 \usage{
 calculate_pmhc_concordance(
   clone_obj,
-  preserve_pmhc = NULL,
+  exclude_top_pmhc = TRUE,
   slot = "counts",
   assay = "pMHC"
 )
@@ -15,13 +15,13 @@ calculate_pmhc_concordance(
 \item{clone_obj}{(\code{Seurat}) An Seurat object subset for a single clone.
 that includes pMHC assay data.}
 
-\item{preserve_pmhc}{(\code{character}) A character vector specifying the names or identifiers of pMHCs to be preserved
-for the concordance calculation. If NULL (default), all pMHCs are used.}
-
 \item{slot}{(\code{character}) The slot of the clone object from which to retrieve the pMHC data.
 Common values include 'counts', 'data', or 'scale.data'. Defaults to 'counts'.}
 
 \item{assay}{(\code{character}) The name of the assay to use for extracting the pMHC data. Defaults to 'pMHC'.}
+
+\item{preserve_pmhc}{(\code{character}) A character vector specifying the names or identifiers of pMHCs to be preserved
+for the concordance calculation. If NULL (default), all pMHCs are used.}
 }
 \value{
 (\code{Seurat}) A numeric vector representing the concordance for each pMHC.
