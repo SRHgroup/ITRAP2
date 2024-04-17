@@ -168,6 +168,7 @@ score_pmhc_noise <- function(object, how=c('per_clone', 'pseudobulk'), downsampl
 #' 
 #' @export
 calculate_pmhc_concordance <- function(clone_obj, exclude_top_pmhc = TRUE, 
+                                       z_score_c=1, fraction_c=.5,
                                        slot = 'counts', assay = 'pMHC') {
   
   if (!is.logical(exclude_top_pmhc) || length(exclude_top_pmhc) != 1) {
@@ -185,17 +186,21 @@ calculate_pmhc_concordance <- function(clone_obj, exclude_top_pmhc = TRUE,
   
   concordance <- calc_concordance(pmhc_counts)
   
-  if (exclude_top_pmhc){
+  if (exclude_top_pmhc) {
+    npos <- apply(pmhc_counts > z_score_c, 1, function(x) sum(x) / length(x)) %>% sort(decreasing = TRUE)
+    reactions <- names(npos[npos > fraction_c])
     
-    order_concordance <- order(concordance, decreasing = TRUE)
-    highest_index <- order_concordance[1]
-    second_highest_index <- order_concordance[2]
-    
-    pmhc_counts_excluded <- pmhc_counts[-highest_index, , drop = FALSE]
-    adjusted_concordance <- calc_concordance(pmhc_counts_excluded)
-    
-    concordance[second_highest_index] <- adjusted_concordance[second_highest_index]
-  }
+    if (length(reactions) > 1) {
+      for (i in 2:length(reactions)) {  # Start from 2 since the first is already calculated
+        exclude_indices <- match(reactions[1:(i - 1)], rownames(pmhc_counts))
+        remaining_counts <- pmhc_counts[-exclude_indices, , drop = FALSE]
+        adjusted_concordance <- calc_concordance(remaining_counts)
+        
+        current_reaction_index <- match(reactions[i], rownames(pmhc_counts))
+        concordance[current_reaction_index] <- adjusted_concordance[match(reactions[i], rownames(remaining_counts))]
+        }
+      }
+    }
   
   return(concordance)
 }

@@ -287,7 +287,7 @@ smooth_pmhc <- function(object, best_params = NULL, slot='scale.data', assay = '
 #' @export
 
 assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_clones=F,
-                        cl_size_thresh=3, entropy_thresh=1, delta_threshold = 1){
+                        cl_size_thresh=3, entropy_thresh=1, delta_threshold = 1, ...){
   
   if (is.null(object@commands$smooth_pmhc)){
     stop('you have to run smooth_pmhc() before running assign_pmhc')
@@ -357,7 +357,7 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_cl
       entropy <- object@misc$noise_score[names(outliers),]$entropy
       concordance <- calculate_pmhc_concordance(
         clone_obj = subset(object, clone_id == colnames(clone_bulk)[i]),
-        assay='pMHC', slot='scale.data')[names(outliers)] 
+        assay='pMHC', slot='scale.data', ...)[names(outliers)] 
       
       confidence_scores <- calculate_confidence(entropy = entropy, 
                                                 concordances = concordance, 

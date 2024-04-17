@@ -7,6 +7,8 @@
 calculate_pmhc_concordance(
   clone_obj,
   exclude_top_pmhc = TRUE,
+  z_score_c = 1,
+  fraction_c = 0.5,
   slot = "counts",
   assay = "pMHC"
 )

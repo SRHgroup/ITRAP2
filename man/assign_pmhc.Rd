@@ -11,7 +11,8 @@ assign_pmhc(
   assign_small_clones = F,
   cl_size_thresh = 3,
   entropy_thresh = 1,
-  delta_threshold = 1
+  delta_threshold = 1,
+  ...
 )
 }
 \arguments{
