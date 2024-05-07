@@ -4,7 +4,7 @@
 \alias{ScaleDataNoOutliers}
 \title{Perform the scaling with no outliers on your Seurat object}
 \usage{
-ScaleDataNoOutliers(object, outlier = 3, return_params = F)
+ScaleDataNoOutliers(object, outlier = 3, return_params = FALSE, verbose = TRUE)
 }
 \arguments{
 \item{object}{(\code{Seurat}) A Seurat object that must be of the above described
@@ -14,6 +14,8 @@ structure}
 
 \item{return_params}{(\code{logical}) whether you want to return a lust sds and
 means along with the object}
+
+\item{verbose}{whether to show a progress bar}
 }
 \value{
 (\code{Seurat}) with the ScaleData slot in pMHC assay filled with scaled

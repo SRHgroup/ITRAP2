@@ -10,9 +10,11 @@ smooth_pmhc(
   slot = "scale.data",
   assay = "pMHC",
   cl_size_thresh = 3,
+  normalise = FALSE,
   span_val = 1,
   degree_val = 1,
-  family_val = "gaussian"
+  family_val = "gaussian",
+  verbose = TRUE
 )
 }
 \arguments{
@@ -33,6 +35,8 @@ smooth scaled by ScaleDataNoOutliers counts}
 \item{degree_val}{(\code{numeric}) value for degree parameter in loess}
 
 \item{family_val}{(\code{character}) value for family parameter in loess}
+
+\item{verbose}{whether to show a progress bar}
 }
 \value{
 (\code{Seurat}) with the ScaleData slot with scaled pMHC counts smoothed

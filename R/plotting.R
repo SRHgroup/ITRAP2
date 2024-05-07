@@ -199,7 +199,8 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
                          hm_breaks = c(0, 4, 10), hm_palette=c("blue", "white", "red"), pmhc_palette=NULL,
                          condpalette=NULL, highlight_pmhc.tcr=F, stop_large_highlighting=T, rowm.fonts=8,  
                          column_title_fonts = 10, column_title_rot = 45, use_original_order=T, clean_mat=F, 
-                         add_tcr_cluster=F, show_row_names=T, pmhc_subset=NULL, custom_annotations=c(), max_cols=16000, ...){
+                         add_tcr_cluster=F, show_row_names=T, pmhc_subset=NULL, custom_annotations=c(), 
+                         skip_bugged_frames=F, bugged_width=.6, max_cols=16000, ...){
   
   library(randomcoloR)
   library(circlize)
@@ -214,6 +215,10 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
     stop(paste("Missing columns in object's metadata:", paste(missing_cols, collapse=", ")))
   }
   
+  if(is.null(object@misc$pmhc)){
+    stop("Missing pmhc metadata in object@misc$pmhc")
+  }
+  
   cells_subset <- Cells(object)[(object$clone_id %in% clones) & !is.na(object$clone_id)]
   
   if (!'pMHC_classification' %in% colnames(object@meta.data)){
@@ -222,7 +227,7 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
   
   ann_columns <- c("clone_id", "pMHC_classification", custom_annotations)
   ann_subset <- object@meta.data %>%
-    select(all_of(ann_columns)) %>%
+    dplyr::select(all_of(ann_columns)) %>%
     filter(row.names(.) %in% cells_subset) %>%
     arrange(clone_id)
   
@@ -303,7 +308,7 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
     cells_order <- ann_subset %>%
       mutate(clone_order_factor = factor(clone_id, levels = clones_order)) %>%
       arrange(clone_order_factor) %>%
-      select(-clone_order_factor) %>% 
+      dplyr::select(-clone_order_factor) %>% 
       rownames_to_column('cell_id') %>%
       pull(cell_id)
   }
@@ -385,6 +390,10 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
           
           y = 1 - (row - 0.5) / nrow(pmhc_mat_ordered)
           height = 1 / nrow(pmhc_mat_ordered)
+          
+          if (skip_bugged_frames & width > bugged_width){
+            next
+          }
           
           grid.rect(x = x, y = y, width = width, height = height, just = c("left", "center"), 
                     gp = gpar(col = "green", lwd = 2, fill = NA))

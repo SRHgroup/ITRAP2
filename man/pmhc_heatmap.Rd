@@ -26,6 +26,8 @@ pmhc_heatmap(
   show_row_names = T,
   pmhc_subset = NULL,
   custom_annotations = c(),
+  skip_bugged_frames = F,
+  bugged_width = 0.6,
   max_cols = 16000,
   ...
 )

@@ -30,26 +30,31 @@ ClonePseudobulk <- function(object, assay = "pMHC", slot = "scale.data", clone_c
   }
   
   group_ids <- setNames(object = object@meta.data[[clone_col]], nm = Cells(object)) 
-  unique_groups <- unique(group_ids) %>% drop.na()
+  unique_groups <- unique(group_ids) %>% na.omit()  # Changed from drop.na() to na.omit() which is correct for omitting NA values.
   
-  pseudobulk_means <- sapply(unique_groups, function(group) {
-    cells_in_group <- names(group_ids[group_ids == group])
+  pseudobulk_means <- lapply(unique_groups, function(group) {
+    cells_in_group <- names(group_ids[group_ids == group]) %>% drop.na()
     
-    group_data <- data[, cells_in_group]
+    group_data <- data[, cells_in_group, drop = FALSE]  # Ensure it is always treated as a matrix.
     
-    rowMeans(group_data, na.rm = TRUE)
+    # Calculate row means, ensuring output is a vector if only one row.
+    if (is.matrix(group_data)) {
+      return(rowMeans(group_data, na.rm = TRUE))
+        # Directly return the column as is if only one column present.
+    } else {
+      return(group_data[,1])
+    }
   })
   
-  # Convert the result to a matrix if necessary
-  if (is.vector(pseudobulk_means)) {
-    pseudobulk_means <- matrix(pseudobulk_means, nrow = length(pseudobulk_means))
-  }
+  # Convert list of vectors to a matrix
+  pseudobulk_means <- do.call(cbind, pseudobulk_means)
   
   # Assign the group names to the columns of the result
   colnames(pseudobulk_means) <- unique_groups
   
   return(pseudobulk_means)
 }
+
 
 drop.na <- function(vec){
   vec[!is.na(vec)]

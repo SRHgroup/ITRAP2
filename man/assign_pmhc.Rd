@@ -12,6 +12,11 @@ assign_pmhc(
   cl_size_thresh = 3,
   entropy_thresh = 1,
   delta_threshold = 1,
+  alpha = 1,
+  beta = 1,
+  gamma = 1,
+  force = F,
+  verbose = TRUE,
   ...
 )
 }
@@ -37,6 +42,8 @@ extremely noisy pMHCs.}
 
 \item{delta_threshold}{what should be a threshold that differentiates
 background from specificity signal, recommended from 0.7 to 1}
+
+\item{verbose}{whether to show a progress bar}
 }
 \value{
 (\code{Seurat}) with the ScaleData slot with scaled pMHC counts smoothed

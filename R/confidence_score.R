@@ -90,7 +90,7 @@ score_pmhc_noise <- function(object, how=c('per_clone', 'pseudobulk'), downsampl
   downsampled_clones <- object_sub@meta.data %>% filter(clone_size>1) %>%
     pull(clone_id) %>% unique() %>% sample(., round(length(.) * downsample_rate))
   biggest_clones <- object_sub@meta.data %>% 
-    select(clone_id, clone_size) %>%
+    dplyr::select(clone_id, clone_size) %>%
     unique() %>% slice_max(order_by = clone_size, n = 20) %>% pull(clone_id)
   downsampled_clones <- c(downsampled_clones, biggest_clones) %>% unique()
 
@@ -168,7 +168,7 @@ score_pmhc_noise <- function(object, how=c('per_clone', 'pseudobulk'), downsampl
 #' 
 #' @export
 calculate_pmhc_concordance <- function(clone_obj, exclude_top_pmhc = TRUE, 
-                                       z_score_c=1, fraction_c=.5,
+                                       z_score_c=1, fraction_c=.5, preserve_pmhc=NULL,
                                        slot = 'counts', assay = 'pMHC') {
   
   if (!is.logical(exclude_top_pmhc) || length(exclude_top_pmhc) != 1) {
@@ -176,6 +176,9 @@ calculate_pmhc_concordance <- function(clone_obj, exclude_top_pmhc = TRUE,
   }
   
   pmhc_counts <- GetAssayData(clone_obj, layer = slot, assay = assay)
+  if (!is.null(preserve_pmhc)){
+    pmhc_counts <- pmhc_counts[preserve_pmhc,]
+  }
   
   calc_concordance <- function(data) {
     max_vals <- apply(data, 2, max)
@@ -269,7 +272,7 @@ calculate_confidence <- function(entropy, concordances, clone_size, alpha = 1, b
 #' seurat_obj <- filter_pmhc(seurat_obj, confidence_cutoff = 0.5)
 #'
 #' @export
-filter_pmhc <- function(object, confidence_cutoff) {
+filter_pmhc <- function(object, confidence_cutoff=1.5) {
   
   if (is.null(object@commands$pmhc_filter)) {
     object@meta.data$pMHC_classification_unf <- object@meta.data$pMHC_classification
@@ -281,7 +284,7 @@ filter_pmhc <- function(object, confidence_cutoff) {
   
   meta <- object@meta.data 
  
-   classifications_list <- strsplit(as.character(meta$pMHC_classification), ":")
+  classifications_list <- strsplit(as.character(meta$pMHC_classification), ":")
   confidence_list <- strsplit(as.character(meta$pMHC_confidence), ":")
   
    for (i in seq_along(classifications_list)) {
@@ -301,6 +304,7 @@ filter_pmhc <- function(object, confidence_cutoff) {
   }
   meta$pMHC_classification[meta$pMHC_classification_unf == 'Negative' &
                                !is.na(meta$pMHC_classification_unf)] <- 'Negative'
+  meta$pMHC_classification[grepl('NA', meta$pMHC_classification)] <- NA
   object@meta.data <- meta[Cells(object),]
   
   object@commands$filter_pmhc <- TRUE
