@@ -179,6 +179,10 @@ smooth_pmhc <- function(object, best_params = NULL, slot = 'scale.data', assay =
                         cl_size_thresh = 3, normalise = FALSE, span_val = 1, 
                         degree_val = 1, family_val = "gaussian", verbose = TRUE) {
   
+  if (cl_size_thresh>2){
+    stop('cl_size_thresh must be minimum 2')
+  }
+  
   if (is.null(object@commands$ScaleDataNoOutliers)){
     stop('you have to run ScaleDataNoOutliers() before running smooth_pmhc')
   }
@@ -296,6 +300,10 @@ smooth_pmhc <- function(object, best_params = NULL, slot = 'scale.data', assay =
 assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_clones=F,
                         cl_size_thresh=3, entropy_thresh=1, delta_threshold = 1, 
                         alpha=1, beta=1, gamma=1, force=F, verbose=TRUE, ...){
+  
+  if (cl_size_thresh>2){
+    stop('cl_size_thresh must be minimum 2')
+  }
   
   if (is.null(object@commands$smooth_pmhc) & !force){
     stop('you have to run smooth_pmhc() before running assign_pmhc')
