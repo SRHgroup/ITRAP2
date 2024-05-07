@@ -199,6 +199,13 @@ smooth_pmhc <- function(object, best_params = NULL, slot = 'scale.data', assay =
   }
   
   bigger_thanXclones <- object$clone_id[object$clone_size > cl_size_thresh & !is.na(object$clone_size)] %>% unique()
+  
+  if (length(bigger_thanXclones) == 0){
+    stop('there are no expanded clones in the dataset, hence the pMHC counts are 
+          unsmoothable, if you study naive repertoirs, you can try to skip this step
+          doing assign_mhc(..., force=T)')
+  }
+  
   smoothable_cells <- Cells(object)[object$clone_id %in% bigger_thanXclones]
   unsmoothable_cells <- Cells(object)[!Cells(object) %in% smoothable_cells]
   
@@ -208,10 +215,10 @@ smooth_pmhc <- function(object, best_params = NULL, slot = 'scale.data', assay =
   unsmoothable_counts <- scaled_counts[, unsmoothable_cells]
   scaled_counts <- scaled_counts[, smoothable_cells]
   clone_assignments <- object@meta.data[smoothable_cells,]$clone_id
-  total_iterations <- length(bigger_thanXclones)
   
   # Initialize the progress bar if verbose is TRUE
   if (verbose) {
+    total_iterations <- length(bigger_thanXclones)
     pb <- txtProgressBar(min = 0, max = total_iterations, style = 3, width = 50, char = "+")
     cat(sprintf('\nsmoothing each pMHC within each clone bigger than %d \n', cl_size_thresh))
   }
@@ -320,19 +327,39 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_cl
   clones <- object$clone_id[!is.na(object$clone_id)]
   big_clones <- names(table(clones)[table(clones) > cl_size_thresh])
   
-  if (verbose) cat('\naggregating clonotype aggregated pseudobulk pMHC matrix\n')
-  clone_bulk <- ClonePseudobulk(object %>% subset(clone_id %in% big_clones), 
-                                assay = assay, clone_col = 'clone_id', 
-                                slot = slot)
+  if (verbose){
+    cat('\naggregating clonotype aggregated pseudobulk pMHC matrix\n')
+    }
+  
+  clone_bulk <- NULL
+  
+  if (length(big_clones) > 0) {
+    if (verbose) {
+      cat('\nAggregating clonotype aggregated pseudobulk pMHC matrix\n')
+    }
+    clone_bulk <- ClonePseudobulk(object %>% subset(clone_id %in% big_clones), 
+                                  assay = assay, clone_col = 'clone_id', 
+                                  slot = slot)
+  } else if (verbose) {
+    cat('\nNo big clones found, skipping pseudobulk aggregation\n')
+  }
   
   if (assign_small_clones){
     single_gem_obj <- subset(object, clone_size == 1)
     single_gems <- GetAssayData(single_gem_obj, layer='scale.data', assay='pMHC')
     colnames(single_gems) <- single_gem_obj@meta.data$clone_id
     rm(single_gem_obj)
-    clone_bulk <- cbind(clone_bulk, single_gems)
     
-    if (verbose) cat(sprintf("\nRemoving features with entropy smaller than %g for clones > than %g gems\n", entropy_thresh, cl_size_thresh))
+    # Combine single-gem data with clone_bulk if it exists
+    if (!is.null(clone_bulk)) {
+      clone_bulk <- cbind(clone_bulk, single_gems)
+    } else {
+      clone_bulk <- single_gems
+    }
+    
+    if (verbose) {
+      cat(sprintf("\nRemoving features with entropy smaller than %g for clones > than %g gems\n", entropy_thresh, cl_size_thresh))
+    }
     high_entropy_pmhc <- rownames(object@misc$noise_score)[object@misc$noise_score$entropy > entropy_thresh]
     small_clones <- colnames(clone_bulk)[colnames(clone_bulk) %in% object$clone_id[object$clone_size < cl_size_thresh]]
     clone_bulk[,small_clones][high_entropy_pmhc,] <- -10
