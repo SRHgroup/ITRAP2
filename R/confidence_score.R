@@ -181,8 +181,8 @@ calculate_pmhc_concordance <- function(clone_obj, exclude_top_pmhc = TRUE,
   }
   
   calc_concordance <- function(data) {
-    max_vals <- apply(data, 2, max)
-    max_counts <- apply(data, 1, function(row) sum(row == max_vals))
+    max_vals <- apply(data, 2, max, na.rm=T)
+    max_counts <- apply(data, 1, function(row) sum(row == max_vals, na.rm=T))
     concordance <- max_counts / ncol(data)
     return(concordance)
   }

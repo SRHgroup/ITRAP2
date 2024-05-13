@@ -179,7 +179,7 @@ smooth_pmhc <- function(object, best_params = NULL, slot = 'scale.data', assay =
                         cl_size_thresh = 3, normalise = FALSE, span_val = 1, 
                         degree_val = 1, family_val = "gaussian", verbose = TRUE) {
   
-  if (cl_size_thresh>2){
+  if (cl_size_thresh<2){
     stop('cl_size_thresh must be minimum 2')
   }
   
@@ -308,7 +308,7 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_cl
                         cl_size_thresh=3, entropy_thresh=1, delta_threshold = 1, 
                         alpha=1, beta=1, gamma=1, force=F, verbose=TRUE, ...){
   
-  if (cl_size_thresh>2){
+  if (cl_size_thresh<2){
     stop('cl_size_thresh must be minimum 2')
   }
   
@@ -380,9 +380,13 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_cl
     if (!is.na(gap_pos)) {
       outliers <- scores[(gap_pos+1):length(scores)]
       entropy <- object@misc$noise_score[names(outliers),]$entropy
-      concordance <- calculate_pmhc_concordance(clone_obj = subset(object, clone_id == colnames(clone_bulk)[i]), assay='pMHC', slot='scale.data', ...)
+      concordance <- calculate_pmhc_concordance(clone_obj = subset(object, clone_id == colnames(clone_bulk)[i]), 
+                                                assay='pMHC', slot='scale.data')
+      concordance <- concordance[names(outliers)]
       
-      confidence_scores <- calculate_confidence(entropy = entropy, concordances = concordance, clone_size = cl_size, alpha = alpha, beta = beta, gamma = gamma)
+      confidence_scores <- calculate_confidence(entropy = entropy, concordances = concordance, 
+                                                clone_size = cl_size, alpha = alpha, beta = beta, gamma = gamma)
+      
       clone_outliers[[colnames(clone_bulk)[i]]] <- list(confidence_scores)
     } else {
       clone_outliers[[colnames(clone_bulk)[i]]] <- list(c("Negative"=NA))
