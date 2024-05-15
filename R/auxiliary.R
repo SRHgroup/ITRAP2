@@ -21,7 +21,18 @@
 #' @export
 #'
 #' @importFrom Seurat GetAssayData
-ClonePseudobulk <- function(object, assay = "pMHC", slot = "scale.data", clone_col = "clone_id") {
+ClonePseudobulk <- function(object, assay="pMHC", slot="scale.data", 
+                            clone_col="clone_id", z_score_threshold=2,
+                            filter_by_zscore=FALSE) {
+  
+  if (filter_by_zscore){
+    warning("filter_by_zscore should only be used if slot='scale.data'")
+    cells <- Cells(object)
+    cells_to_subset <- apply(GetAssayData(object = object, assay = assay, layer = slot), 
+                          2, function(x) any(x > threshold))
+    cells_subset <- cells[cells_to_subset]
+    object <- subset(object, cells = cells_subset)
+  }
   
   data <- GetAssayData(object = object, assay = assay, layer = slot)
   
@@ -59,3 +70,18 @@ ClonePseudobulk <- function(object, assay = "pMHC", slot = "scale.data", clone_c
 drop.na <- function(vec){
   vec[!is.na(vec)]
 }
+
+normalize_vector <- function(vec) {
+  if (!is.numeric(vec)) {
+    stop("Input vector must be numeric")
+  }
+  
+  min_val <- min(vec)
+  max_val <- max(vec)
+  
+  normalized_vec <- (vec - min_val) / (max_val - min_val)
+  
+  return(normalized_vec)
+}
+
+

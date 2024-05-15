@@ -230,7 +230,8 @@ calculate_pmhc_concordance <- function(clone_obj, exclude_top_pmhc = TRUE,
 #' calculate_confidence(entropy, concordances, clone_size, alpha = 1, beta = 1, gamma = 1)
 #'
 #' @export
-calculate_confidence <- function(entropy, concordances, clone_size, alpha = 1, beta = 1, gamma = 1) {
+calculate_confidence <- function(entropy, concordances, clone_size, deltas,
+                                 alpha = 1, beta = 1, gamma = 1, delta = 1) {
   if (length(clone_size) > 1) {
     stop("Clone size should be a single digit representing the size of the clone.")
   }
@@ -240,7 +241,7 @@ calculate_confidence <- function(entropy, concordances, clone_size, alpha = 1, b
   }
   
   # Calculate confidence score for each pMHC-TCR pair
-  confidence_scores <- alpha * concordances + beta * log(clone_size) - gamma * entropy
+  confidence_scores <- alpha * concordances + beta * log(clone_size) + delta * deltas - gamma * entropy
   
   return(round(confidence_scores, 2))
 }

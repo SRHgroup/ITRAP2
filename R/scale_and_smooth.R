@@ -269,6 +269,14 @@ smooth_pmhc <- function(object, best_params = NULL, slot = 'scale.data', assay =
   return(object)
 }
 
+filter_by_z_score <- function(scaled_mat, z_score_threshold){
+  valid_columns <- apply(scaled_mat, 2, function(x) any(x > z_score_threshold))
+  valid_columns[is.na(valid_columns)] <- FALSE
+  
+  filtered_mat <- scaled_mat[, valid_columns]
+  
+  return(filtered_mat)
+}
 
 #' Perform pMHC assigment /each big clone
 #'
@@ -306,6 +314,8 @@ smooth_pmhc <- function(object, best_params = NULL, slot = 'scale.data', assay =
 
 assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_clones=F,
                         cl_size_thresh=3, entropy_thresh=1, delta_threshold = 1, 
+                        filter_by_zscore=FALSE, filter_by_zscore_big_clones=FALSE,
+                        z_score_threshold=2,
                         alpha=1, beta=1, gamma=1, force=F, verbose=TRUE, ...){
   
   if (cl_size_thresh<2){
@@ -327,10 +337,6 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_cl
   clones <- object$clone_id[!is.na(object$clone_id)]
   big_clones <- names(table(clones)[table(clones) > cl_size_thresh])
   
-  if (verbose){
-    cat('\naggregating clonotype aggregated pseudobulk pMHC matrix\n')
-    }
-  
   clone_bulk <- NULL
   
   if (length(big_clones) > 0) {
@@ -339,7 +345,9 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_cl
     }
     clone_bulk <- ClonePseudobulk(object %>% subset(clone_id %in% big_clones), 
                                   assay = assay, clone_col = 'clone_id', 
-                                  slot = slot)
+                                  slot = slot, 
+                                  filter_by_zscore=filter_by_zscore_big_clones,
+                                  z_score_threshold=z_score_threshold)
   } else if (verbose) {
     cat('\nNo big clones found, skipping pseudobulk aggregation\n')
   }
@@ -349,6 +357,11 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_cl
     single_gems <- GetAssayData(single_gem_obj, layer='scale.data', assay='pMHC')
     colnames(single_gems) <- single_gem_obj@meta.data$clone_id
     rm(single_gem_obj)
+    
+    if (filter_by_zscore){
+      single_gems <- filter_by_z_score(single_gems, 
+                                       z_score_threshold = z_score_threshold)
+    }
     
     # Combine single-gem data with clone_bulk if it exists
     if (!is.null(clone_bulk)) {
@@ -377,6 +390,8 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_cl
     diffs <- diff(scores)
     gap_pos <- which(diffs > delta_threshold)[1]
     
+    scores_interpolated <- normalize_vector(scores[names(diffs)])
+    
     if (!is.na(gap_pos)) {
       outliers <- scores[(gap_pos+1):length(scores)]
       entropy <- object@misc$noise_score[names(outliers),]$entropy
@@ -384,8 +399,14 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_cl
                                                 assay='pMHC', slot='scale.data')
       concordance <- concordance[names(outliers)]
       
-      confidence_scores <- calculate_confidence(entropy = entropy, concordances = concordance, 
-                                                clone_size = cl_size, alpha = alpha, beta = beta, gamma = gamma)
+      background <- scores_interpolated[1:(gap_pos-1)]
+      positives <- scores_interpolated[names(diffs)][(gap_pos):length(diffs)]
+      
+      deltas <- positives - mean(background)
+      
+      confidence_scores <- calculate_confidence(entropy=entropy, concordances=concordance, 
+                                                deltas=deltas, clone_size = cl_size, 
+                                                alpha = alpha, beta = beta, gamma = gamma, delta = deltas)
       
       clone_outliers[[colnames(clone_bulk)[i]]] <- list(confidence_scores)
     } else {

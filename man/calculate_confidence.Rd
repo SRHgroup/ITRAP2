@@ -8,9 +8,11 @@ calculate_confidence(
   entropy,
   concordances,
   clone_size,
+  deltas,
   alpha = 1,
   beta = 1,
-  gamma = 1
+  gamma = 1,
+  delta = 1
 )
 }
 \arguments{
