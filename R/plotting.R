@@ -200,7 +200,7 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
                          condpalette=NULL, highlight_pmhc.tcr=F, stop_large_highlighting=T, rowm.fonts=8,  
                          column_title_fonts = 10, column_title_rot = 45, use_original_order=T, clean_mat=F, 
                          add_tcr_cluster=F, show_row_names=T, pmhc_subset=NULL, custom_annotations=c(), 
-                         skip_bugged_frames=F, bugged_width=.6, max_cols=16000, ...){
+                         skip_bugged_frames=F, show_legend_ann=c(F, T, T) ,bugged_width=.6, max_cols=16000, ...){
   
   library(randomcoloR)
   library(circlize)
@@ -325,7 +325,7 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
   ann_list <- c(ann_list, custom_ann_list) # Combine lists
   
   hm22ann <- do.call(HeatmapAnnotation, c(ann_list, list(
-    col = palette_list, show_legend = c(F, T, T),
+    col = palette_list, show_legend = show_legend_ann,
     which = 'col',
     annotation_width = unit(c(1, 4), 'cm'),
     gap = unit(1, 'mm')

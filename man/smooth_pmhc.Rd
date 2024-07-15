@@ -7,7 +7,6 @@
 smooth_pmhc(
   object,
   best_params = NULL,
-  slot = "scale.data",
   assay = "pMHC",
   cl_size_thresh = 3,
   normalise = FALSE,
@@ -23,9 +22,6 @@ structure}
 
 \item{best_params}{(\code{list}) ignore it for now}
 
-\item{slot}{(\code{character}) within what clot to perform smoothing, we recommend to
-smooth scaled by ScaleDataNoOutliers counts}
-
 \item{assay}{(\code{character}) name of the slot with pMHC counts, default "pMHC"}
 
 \item{cl_size_thresh}{(\code{numeric}) from what clone size a clone will be smoothed}
@@ -37,6 +33,9 @@ smooth scaled by ScaleDataNoOutliers counts}
 \item{family_val}{(\code{character}) value for family parameter in loess}
 
 \item{verbose}{whether to show a progress bar}
+
+\item{slot}{(\code{character}) within what clot to perform smoothing, we recommend to
+smooth scaled by ScaleDataNoOutliers counts}
 }
 \value{
 (\code{Seurat}) with the ScaleData slot with scaled pMHC counts smoothed

@@ -27,6 +27,7 @@ pmhc_heatmap(
   pmhc_subset = NULL,
   custom_annotations = c(),
   skip_bugged_frames = F,
+  show_legend_ann = c(F, T, T),
   bugged_width = 0.6,
   max_cols = 16000,
   ...

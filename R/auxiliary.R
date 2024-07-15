@@ -84,4 +84,134 @@ normalize_vector <- function(vec) {
   return(normalized_vec)
 }
 
+extract_pairs <- function(object){
+  return(
+    object@meta.data %>%
+    filter(pMHC_classification != 'Negative' & !is.na(pMHC_classification)) %>%
+    filter(productive_beta & productive_alpha) %>%
+    select(pMHC_classification, pMHC_confidence, pMHC_pvalues,
+           clone_id, junction_beta, junction_alpha, clone_id,
+           v_call_beta, c_call_beta, j_call_beta, d_call_beta,
+           v_call_alpha, c_call_alpha, j_call_alpha, d_call_alpha) %>%
+    separate_rows(c(pMHC_classification, pMHC_confidence, pMHC_pvalues), sep = ':') %>%
+    mutate(peptide = gsub('-.+', '', pMHC_classification)) %>%
+    mutate(tcr_pmhc = paste0(junction_beta, '_', junction_alpha, '_', peptide)) %>%
+    distinct()
+    )
+}
+
+plot_tcr_pmhc_permutation <- function(object, clonal_id, assay = 'pMHC', 
+                          slot='data', n_permutations=1000){
+  
+  clone_coors <- which(object$clone_id == clone_id)
+  clone_size <- object$clone_size[object$clone_id == clone_id] %>% unique()
+  
+  meta <- object@meta.data %>%
+    filter(clone_id == clonal_id) %>% 
+    dplyr::select(pMHC_classification, pMHC_confidence, pMHC_pvalues) %>%
+    distinct()
+    
+  if (meta$pMHC_classification == 'Negative' | is.na(meta$pMHC_classification)){
+    stop(paste0('clone ', clonal_id, ' doesnt have an assign pmhc specificity'))
+  }
+  
+  meta <- meta %>%
+    separate_rows(c(pMHC_classification, pMHC_confidence, pMHC_pvalues), sep = ':')
+  
+  pmhcs <- meta %>% pull(pMHC_classification)
+  p_values <- meta %>% pull(pMHC_pvalues)
+  names(p_values) <- pmhcs
+  
+  pmhc_mat <- GetAssayData(object, assay = assay, layer=slot)[pmhcs,]
+  observed_means <- rowMeans(pmhc_mat[, clone_coords, drop=FALSE])
+  observed_stabs <- apply(pmhc_mat, 1, function(x) mean(x > stab_z))
+  
+  simulated_means <- matrix(NA, nrow = nrow(pmhc_mat), ncol = n_permutations)
+  simulated_stabs <- matrix(NA, nrow = nrow(pmhc_mat), ncol = n_permutations)
+  
+  rownames(simulated_means) <- rownames(pmhc_mat)
+  rownames(simulated_stabs) <- rownames(pmhc_mat)
+  
+  for (i in 1:n_permutations) {
+    sampled_columns <- sample(ncol(pmhc_mat), cl_size, replace = FALSE)
+    simulated_means[, i] <- rowMeans(pmhc_mat[, sampled_columns, drop=FALSE])
+    simulated_stabs[, i] <- apply(pmhc_mat[, sampled_columns, drop=FALSE], 1, function(x) mean(x > stab_z))
+  }
+  
+  plot_list <- list()
+  
+  for (pmhc in rownames(simulated_means)) {
+    print(pmhc)
+    current_means <- data.frame(value = simulated_means[pmhc, ])
+    current_obs_mean <- observed_means[pmhc]
+    current_stabs <- data.frame(value = simulated_stabs[pmhc, ])
+    current_obs_stab <- observed_stabs[pmhc]
+    
+    means_plot <- ggplot(current_means, aes(x = value)) + 
+      geom_histogram(binwidth = 0.1, color = "black", fill = "grey") +
+      geom_vline(xintercept = current_obs_mean, linetype = "dashed", color = "red", size = 2) +
+      labs(title = paste0('simulated means for ', pmhc, 
+                          ',\nclone_size=', clone_size,
+                          ' p_value = ', p_values[pmhc])) +
+      theme_minimal()
+    
+    stabs_plot <- ggplot(current_stabs, aes(x = value)) + 
+      geom_histogram(binwidth = 0.01, color = "black", fill = "blue") +
+      geom_vline(xintercept = current_obs_stab, linetype = "dashed", color = "green", size = 2) +
+      labs(title =  paste0('simulated stabilities for ', pmhc, ', clone_size=', clone_size)) +
+      theme_minimal()
+    
+    combined_plot <- means_plot + stabs_plot + plot_layout(guides = 'collect') & theme(legend.position = "bottom")
+    plot_list[[pmhc]] <- combined_plot
+    
+  }
+  final_plot <- patchwork::wrap_plots(plot_list, ncol = 1)
+  final_plot 
+}
+
+
+
+
+pmhc_volcano_plot <- function(meta, conf_threshold=.5, pval_threshold=-log10(0.05)) {
+  # Convert confidence to log scale if needed
+  meta <- extract_pairs(object)
+  meta <- meta %>%
+    mutate(pMHC_confidence = as.numeric(pMHC_confidence)) %>%
+    mutate(pMHC_pvalues = as.numeric(pMHC_pvalues)) %>%
+    mutate(log_conf = log10(pMHC_confidence)) %>%
+    mutate(min10logp = -log10(pMHC_pvalues))         
+  
+  # Create the plot
+  plot <- ggplot(meta, aes(x = log_conf, y = min10logp)) +
+    geom_point(aes(color = (log_conf >= conf_threshold & pMHC_pvalues <= pval_threshold)), size = 2) +
+    scale_color_manual(values = c("grey", "red")) +
+    geom_vline(xintercept = conf_threshold, linetype = "dashed", color = "blue") +
+    geom_hline(yintercept = -log10(pval_threshold), linetype = "dashed", color = "blue") +
+    labs(
+      title = "Volcano Plot",
+      x = "Log10(Confidence)",
+      y = "-Log10(p-value)"
+    ) +
+    theme_minimal() +
+    theme(legend.position = "none")
+  
+  # Add text annotations for significant points
+  significant_points <- subset(meta, log_conf >= conf_threshold & pMHC_pvalues <= pval_threshold)
+  plot <- plot + 
+    geom_text_repel(
+      data = significant_points,
+      aes(label = pMHC_classification),
+      size = 3,
+      box.padding = 0.3,
+      point.padding = 0.3,
+      max.overlaps = 10
+    )
+  
+  return(plot)
+}
+
+
+
+
+
 

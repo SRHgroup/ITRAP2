@@ -15,9 +15,12 @@ assign_pmhc(
   filter_by_zscore = FALSE,
   filter_by_zscore_big_clones = FALSE,
   z_score_threshold = 2,
+  calculate_pvalue = TRUE,
+  calculate_confidence_score = TRUE,
   alpha = 1,
   beta = 1,
   gamma = 1,
+  delta = 1,
   force = F,
   verbose = TRUE,
   ...
@@ -26,9 +29,6 @@ assign_pmhc(
 \arguments{
 \item{object}{(\code{Seurat}) A Seurat object that must be of the above described
 structure}
-
-\item{slot}{(\code{character}) within what clot to perform smoothing, we recommend to
-smooth scaled by ScaleDataNoOutliers counts}
 
 \item{assay}{(\code{character}) name of the slot with pMHC counts, default "pMHC"}
 

@@ -273,39 +273,70 @@ calculate_confidence <- function(entropy, concordances, clone_size, deltas,
 #' seurat_obj <- filter_pmhc(seurat_obj, confidence_cutoff = 0.5)
 #'
 #' @export
-filter_pmhc <- function(object, confidence_cutoff=1.5) {
+#object <- subset(obj, clone_id %in% weird)
+filter_pmhc <- function(object, confidence_cutoff=1.5, pvalue_cutoff=0.2,
+                        apply_confidence_filter=T, apply_pvalue_filter=T) { #### BUGGED PVAL FILTER IF CUTOFF IS HIGH
   
   if (is.null(object@commands$pmhc_filter)) {
     object@meta.data$pMHC_classification_unf <- object@meta.data$pMHC_classification
     object@meta.data$pMHC_confidence_unf <- object@meta.data$pMHC_confidence
+    object@meta.data$pMHC_pvalues_unf <- object@meta.data$pMHC_pvalues
   } else {
     object@meta.data$pMHC_classification <- object@meta.data$pMHC_classification_unf
     object@meta.data$pMHC_confidence <- object@meta.data$pMHC_confidence_unf
+    object@meta.data$pMHC_pvalues <- object@meta.data$pMHC_pvalues_unf 
   }
   
   meta <- object@meta.data 
  
   classifications_list <- strsplit(as.character(meta$pMHC_classification), ":")
   confidence_list <- strsplit(as.character(meta$pMHC_confidence), ":")
+  pvalue_list <- strsplit(as.character(meta$pMHC_pvalues), ":")
   
-   for (i in seq_along(classifications_list)) {
+  for (i in seq_along(classifications_list)) {
+     
+    if(is_negative(classifications_list[[i]])){
+      next
+    }
   
-       confidences <- as.numeric(confidence_list[[i]])
+    confidences <- confidence_list[[i]]
     confidences[is.na(confidences) | confidences <= 0] <- -Inf # Set to -Inf to be filtered out
+    confidences <- as.numeric(confidences)
     
-    valid_indices <- which(confidences > confidence_cutoff)
+    pvalues <- pvalue_list[[i]] 
+    pvalues[is.na(pvalues)] <- Inf # Set to -Inf to be filtered out
+    pvalues <- as.numeric(pvalues)
+    
+     # Ensure that all confidences and pvalues are numeric
+    if (any(is.na(confidences)) | any(is.na(pvalues))) {
+      cat("NA values found in confidences or pvalues\n")
+      print(i)
+      next
+    }
+    
+    # Determine valid indices based on filters
+    if (apply_confidence_filter && apply_pvalue_filter) {
+      valid_indices <- which(confidences >= confidence_cutoff & pvalues <= pvalue_cutoff)
+    } else if (apply_confidence_filter) {
+      valid_indices <- which(confidences >= confidence_cutoff)
+    } else if (apply_pvalue_filter) {
+      valid_indices <- which(pvalues <= pvalue_cutoff)
+    } else {
+      valid_indices <- seq_along(confidences)
+    }
     
     if (length(valid_indices) > 0) {
       meta$pMHC_classification[i] <- paste(classifications_list[[i]][valid_indices], collapse = ":")
       meta$pMHC_confidence[i] <- paste(confidences[valid_indices], collapse = ":")
+      meta$pMHC_pvalues[i] <- paste(pvalues[valid_indices], collapse = ":")
     } else {
       meta$pMHC_classification[i] <- NA
       meta$pMHC_confidence[i] <- NA
+      meta$pMHC_pvalues[i] <- NA
     }
   }
   meta$pMHC_classification[meta$pMHC_classification_unf == 'Negative' &
                                !is.na(meta$pMHC_classification_unf)] <- 'Negative'
-  meta$pMHC_classification[grepl('NA', meta$pMHC_classification)] <- NA
   object@meta.data <- meta[Cells(object),]
   
   object@commands$filter_pmhc <- TRUE
@@ -313,4 +344,15 @@ filter_pmhc <- function(object, confidence_cutoff=1.5) {
   return(object)
 }
 
+is_single_na <- function(x) {
+  if (length(x) == 1 && is.na(x)) {
+    return(TRUE)
+  } else {
+    return(FALSE)
+  }
+}
+
+is_negative <- function(x) {
+  length(x) == 1 && !is.na(x) && x == 'Negative'
+}
 
