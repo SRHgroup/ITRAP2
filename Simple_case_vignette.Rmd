@@ -106,12 +106,12 @@ viral_screen <- ScaleDataNoOutliers(viral_screen)
 
 obj_sub <- subset(viral_screen, BC == 'BC390') 
 
-pmhc_heatmap(object = obj_sub, slot = 'scale.data', hm_breaks = c(-3, 0, 10),
+pmhc_heatmap(object = obj_sub, slot = 'data', hm_breaks = c(-3, 0, 10),
              split_cols = T, rowm.fonts = 5, clones = clones, 
              show_row_names = T, clean_mat = F)
 ```
 ```{r}
-pmhc_dist_per_clone(object = obj_sub, clone = '3487_2473', aggr_threshold = 10, slot = 'scale.data')
+pmhc_dist_per_clone(object = obj_sub, clone = '3487_2473', aggr_threshold = 10, slot = 'data')
 ```
 
 
@@ -120,7 +120,9 @@ We can clearly see more clear signal, that we can further improve in the next st
 ## smoothing
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
-obj_sub <- smooth_pmhc(obj_sub)
+obj_sub <- smooth_pmhc(object = obj_sub, 
+                       family_val = 'symmetric'
+                       )
 ```
 
 and next we can start pairing TCRs with pMHCs, not for a small clone <3 gems we will not take into account pMHC with entropy higher than 0.7. This function will also calculate confidence score for each pMHC pair. Green frames highlight the assigned specificities
@@ -136,12 +138,17 @@ pmhc_heatmap(object = obj_sub, slot = 'scale.data', hm_breaks = c(-3, 0, 10), hi
 pmhc_dist_per_clone(object = obj_sub, clone = '3487_2473', aggr_threshold = 10, slot = 'scale.data')
 ```
 
+```{r}
+p_value <- plot_tcr_pmhc_permutation(object = obj_sub, clonal_id = '3487_2473', assay = 'pMHC', slot = 'data')
+p_value
+```
+
 
 this way loess regression minimises the within clone variability in the pMHC values, forcing outliers to follow the trend, thus denoising the data and making it easy to autocratically assign specificities to each clone. If clone has no signal for any pMHc in your panel, its labeled as negative. The pMHC assignments are stored in `pMHC_classification` column by default
 
 ```{r}
 obj_sub@meta.data %>%
-  select(pMHC_classification, pMHC_confidence) %>% 
+  select(pMHC_classification, pMHC_confidence, pMHC_pvalue) %>% 
   head(10)
 ```
 

@@ -255,10 +255,35 @@ smooth_pmhc <- function(object, best_params = NULL, assay = 'pMHC',
           family_val <- best_params[[pmhc]][3]
         }
         
-        loess_fit <- loess(counts ~ seq_along(counts), normalize = normalise, 
-                           span = span_val, degree = degree_val, family = family_val)
-        smoothed_counts[pmhc,][clone_cells] <- predict(loess_fit)
-        object@commands$smooth_pmhc[[clone_id]] <- 'done'
+        ######
+        t <- try({
+          loess_fit <- loess(counts ~ seq_along(counts), normalize = normalise, 
+                             span = span_val, degree = degree_val, family = family_val)
+          smoothed_counts[pmhc,][clone_cells] <- predict(loess_fit)
+          object@commands$smooth_pmhc[[clone_id]] <- 'done'
+        }, silent = TRUE)
+        
+        # If there is an error, retry with the "gaussian" family
+        if("try-error" %in% class(t)) {
+          if (family_val == "symmetric") {
+            t_gaussian <- try({
+              loess_fit <- loess(counts ~ seq_along(counts), normalize = normalise, 
+                                 span = span_val, degree = degree_val, family = "gaussian")
+              smoothed_counts[pmhc,][clone_cells] <- predict(loess_fit)
+              object@commands$smooth_pmhc[[clone_id]] <- 'done_with_gaussian'
+            }, silent = TRUE)
+            
+            if("try-error" %in% class(t_gaussian)) {
+              cat(sprintf('\nError in fitting loess for pmhc %s in clone %s with both symmetric and gaussian families', pmhc, clone_id))
+              object@commands$smooth_pmhc[[clone_id]] <- 'error'
+            }
+          } else {
+            cat(sprintf('\nError in fitting loess for pmhc %s in clone %s with gaussian family', pmhc, clone_id))
+            object@commands$smooth_pmhc[[clone_id]] <- 'error'
+          }
+        }
+        ####
+        
       }, error = function(e) {
         if (verbose) {
           cat(sprintf('\nerror in fitting loess for pmhc %s in clone %s', pmhc, clone_id))

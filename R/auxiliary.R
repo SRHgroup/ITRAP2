@@ -101,24 +101,25 @@ extract_pairs <- function(object){
 }
 
 plot_tcr_pmhc_permutation <- function(object, clonal_id, assay = 'pMHC', 
-                          slot='data', n_permutations=1000){
+                          slot='data', stab_z=1, n_permutations=1000){
   
-  clone_coors <- which(object$clone_id == clone_id)
-  clone_size <- object$clone_size[object$clone_id == clone_id] %>% unique()
+  library(patchwork)
+  
+  clone_coords <- which(object$clone_id == clonal_id)
+  clone_size <- object$clone_size[object$clone_id == clonal_id] %>% drop.na() %>% unique() 
   
   meta <- object@meta.data %>%
     filter(clone_id == clonal_id) %>% 
     dplyr::select(pMHC_classification, pMHC_confidence, pMHC_pvalues) %>%
-    distinct()
-    
-  if (meta$pMHC_classification == 'Negative' | is.na(meta$pMHC_classification)){
+    distinct() %>%
+    separate_rows(c(pMHC_classification, pMHC_confidence, pMHC_pvalues), sep = ':')
+  
+  if (sum(meta$pMHC_classification != 'Negative' | !is.na(meta$pMHC_classification)) == 0){
     stop(paste0('clone ', clonal_id, ' doesnt have an assign pmhc specificity'))
   }
   
-  meta <- meta %>%
-    separate_rows(c(pMHC_classification, pMHC_confidence, pMHC_pvalues), sep = ':')
-  
   pmhcs <- meta %>% pull(pMHC_classification)
+  pmhcs <- object@misc$pmhc %>% filter(pmhc %in% pmhcs) %>% pull(Barcode)
   p_values <- meta %>% pull(pMHC_pvalues)
   names(p_values) <- pmhcs
   
@@ -133,7 +134,7 @@ plot_tcr_pmhc_permutation <- function(object, clonal_id, assay = 'pMHC',
   rownames(simulated_stabs) <- rownames(pmhc_mat)
   
   for (i in 1:n_permutations) {
-    sampled_columns <- sample(ncol(pmhc_mat), cl_size, replace = FALSE)
+    sampled_columns <- sample(ncol(pmhc_mat), clone_size, replace = FALSE)
     simulated_means[, i] <- rowMeans(pmhc_mat[, sampled_columns, drop=FALSE])
     simulated_stabs[, i] <- apply(pmhc_mat[, sampled_columns, drop=FALSE], 1, function(x) mean(x > stab_z))
   }
@@ -158,7 +159,7 @@ plot_tcr_pmhc_permutation <- function(object, clonal_id, assay = 'pMHC',
     stabs_plot <- ggplot(current_stabs, aes(x = value)) + 
       geom_histogram(binwidth = 0.01, color = "black", fill = "blue") +
       geom_vline(xintercept = current_obs_stab, linetype = "dashed", color = "green", size = 2) +
-      labs(title =  paste0('simulated stabilities for ', pmhc, ', clone_size=', clone_size)) +
+      labs(title =  paste0('simulated stabilities for ', pmhc, ',\nclone_size=', clone_size)) +
       theme_minimal()
     
     combined_plot <- means_plot + stabs_plot + plot_layout(guides = 'collect') & theme(legend.position = "bottom")
