@@ -527,7 +527,7 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_cl
   
   object@meta.data <- object@meta.data %>%
     tibble::rownames_to_column('row_id') %>%
-    dplyr::select(-matches('^(pMHC_classification|pMHC_confidence)$')) %>%
+    dplyr::select(-matches('^(pMHC_classification|pMHC_confidence|pMHC_pvalues)$')) %>%
     left_join(df, by = 'clone_id') %>%
     tibble::column_to_rownames('row_id')
   
