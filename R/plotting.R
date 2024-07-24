@@ -364,8 +364,8 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
       unique() %>%
       separate_rows(pMHC_classification, sep=':')
     
+    n_iter <- nrow(tcr_pmhc)
     if (verbose){
-      n_iter <- nrow(tcr_pmhc)
       pb <- txtProgressBar(min = 0,      # Minimum value of the progress bar
                            max = n_iter, # Maximum value of the progress bar
                            style = 3,    # Progress bar style (also available style = 1 and style = 2)

@@ -17,7 +17,8 @@ knitr::opts_chunk$set(dev='CairoPNG', fig.width=10, fig.height=6, dpi=300)
 pmhcDenoiseR is a data denoising workflow for single-cell pMHC datasets. The workflow also assigns the 
 pMHC specificities to individual clonotypes. pmhcDenoiseR works with coupled single-cell pMHC counts with TCR clonotypes.
 
-```{r load_packages, echo=FALSE, message=FALSE, warning=FALSE}
+### load libraries
+```{r load_packages, message=FALSE, warning=FALSE}
 library(Seurat)
 library(pmhcDenoiseR)
 library(uniformly)
@@ -79,7 +80,7 @@ Look at this clone and pMHC counts distributions, on the left we can see that tw
 Next we want to estimate the level of noisyness of each pMHC, we can do that by calculating an entropy ( https://en.wikipedia.org/wiki/Entropy_(information_theory) ) for each pMHC, the pMHCs with highest entropy are expected to be the noisiest
 
 ```{r echo=TRUE, message=FALSE, warning=FALSE}
-viral_screen <- score_pmhc_noise(viral_screen, how = 'per_clone', downsample_rate = .1)
+viral_screen <- score_pmhc_noise(viral_screen, how = 'per_clone', downsample_rate = .1, verbose=F)
 
 hm_noise <- pmhc_heatmap(object = obj_sub, slot = 'counts', hm_breaks = c(0, 5, 10), 
                          rowm.fonts = 5, split_cols = F,
@@ -101,8 +102,8 @@ You can see that the pMHCs with the highest entropy level procude the most noise
 So in next steps we can start to normalize and denoise the data, we apply speific way of mean centering and sd scaling, where means and sds are calculated, not taking outlines (|z|>3) into account. this approach is used, instead of typically used median centering and mad scaling, sinse in sparse single-cell datasets, medians and mads are often zeros.
 
 We prefer to perform scaling on the whole dataset for better mean and sd estimation.
-```{r echo=FALSE, message=FALSE, warning=FALSE}
-viral_screen <- ScaleDataNoOutliers(viral_screen) 
+```{r message=FALSE, warning=FALSE}
+viral_screen <- ScaleDataNoOutliers(viral_screen, verbose = F) 
 
 obj_sub <- subset(viral_screen, BC == 'BC390') 
 

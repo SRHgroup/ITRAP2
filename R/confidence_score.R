@@ -75,7 +75,7 @@ calc_entropy <- function(vec, quantiles) {
 #' seurat_obj <- score_pmhc_noise(seurat_obj, how = 'per_clone', downsample_rate = 0.2)
 #'
 #' @export
-score_pmhc_noise <- function(object, how=c('per_clone', 'pseudobulk'), downsample_rate=.20){
+score_pmhc_noise <- function(object, how=c('per_clone', 'pseudobulk'), downsample_rate=.20, verbose=T){
   
   if (downsample_rate < 0 | downsample_rate > 1){
     stop('downsample rate must be between 0 and 1')
@@ -103,23 +103,27 @@ score_pmhc_noise <- function(object, how=c('per_clone', 'pseudobulk'), downsampl
   
   if (how == 'per_clone'){
     # Initializes the progress bar
-    pb <- txtProgressBar(min = 0,      # Minimum value of the progress bar
-                         max = length(downsampled_clones), # Maximum value of the progress bar
-                         style = 3,    # Progress bar style (also available style = 1 and style = 2)
-                         width = 50,   # Progress bar width. Defaults to getOption("width")
-                         char = "+")   # Character used to create the bar
-    index <- 0
-    cat('\ncalculating pMHC entropy on per clone basis\n')
+    if (verbose){
+      pb <- txtProgressBar(min = 0,      # Minimum value of the progress bar
+                           max = length(downsampled_clones), # Maximum value of the progress bar
+                           style = 3,    # Progress bar style (also available style = 1 and style = 2)
+                           width = 50,   # Progress bar width. Defaults to getOption("width")
+                           char = "+")   # Character used to create the bar
+      index <- 0
+      cat('\ncalculating pMHC entropy on per clone basis\n')
+    }
     for (cl in downsampled_clones){
       data_matrix <- GetAssayData(subset(object, clone_id==cl), layer='counts', assay='pMHC')
       rows_list <- split(data_matrix[pmhc_names,], pmhc_names)
       
       entropies <- mapply(calc_entropy, rows_list[pmhc_names], pmhc_quantiles[pmhc_names])
       
-      index <- index + 1
-      setTxtProgressBar(pb, index)
+      if (verbose) {
+        index <- index + 1
+        setTxtProgressBar(pb, index)
+        }
     }
-    close(pb)
+      if (verbose) close(pb)
     
     entropies_mean <- bind_cols(entropies) %>% rowMeans(na.rm = T)
     names(entropies_mean) <- pmhc_names
