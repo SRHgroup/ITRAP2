@@ -119,20 +119,28 @@ We can clearly see more clear signal, that we can further improve in the next st
 
 ## smoothing
 
-```{r echo=FALSE, message=FALSE, warning=FALSE}
+```{r message=FALSE, warning=FALSE}
 obj_sub <- smooth_pmhc(object = obj_sub, 
-                       family_val = 'symmetric'
+                       family_val = 'symmetric', 
+                       verbose = F
                        )
 ```
 
 and next we can start pairing TCRs with pMHCs, not for a small clone <3 gems we will not take into account pMHC with entropy higher than 0.7. This function will also calculate confidence score for each pMHC pair. Green frames highlight the assigned specificities
 
-```{r echo=FALSE, message=FALSE, warning=FALSE}
-obj_sub <- assign_pmhc(obj_sub, cl_size_thresh = 3, entropy_thresh = 0.7)
-
-pmhc_heatmap(object = obj_sub, slot = 'scale.data', hm_breaks = c(-3, 0, 10), highlight_pmhc.tcr = T,
-             clones = clones, show_row_names = T, clean_mat = F)
+```{r message=FALSE, warning=FALSE}
+obj_sub <- assign_pmhc(obj_sub, 
+                       cl_size_thresh = 3, 
+                       entropy_thresh = 0.7,
+                       verbose = F)
 ```
+
+```{r}
+pmhc_heatmap(object = obj_sub, slot = 'scale.data', hm_breaks = c(-3, 0, 10), highlight_pmhc.tcr = T,
+             clones = clones, show_row_names = T, clean_mat = F, verbose= F )
+
+```
+
 
 ```{r}
 pmhc_dist_per_clone(object = obj_sub, clone = '3487_2473', aggr_threshold = 10, slot = 'scale.data')

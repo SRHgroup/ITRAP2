@@ -200,7 +200,7 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
                          condpalette=NULL, highlight_pmhc.tcr=F, stop_large_highlighting=T, rowm.fonts=8,  
                          column_title_fonts = 10, column_title_rot = 45, use_original_order=T, clean_mat=F, 
                          add_tcr_cluster=F, show_row_names=T, pmhc_subset=NULL, custom_annotations=c(), 
-                         skip_bugged_frames=F, show_legend_ann=c(F, T, T) ,bugged_width=.6, max_cols=16000, ...){
+                         skip_bugged_frames=F, show_legend_ann=c(F, T, T) ,bugged_width=.6, max_cols=16000, verbose=T, ...){
   
   library(randomcoloR)
   library(circlize)
@@ -364,13 +364,15 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
       unique() %>%
       separate_rows(pMHC_classification, sep=':')
     
-    n_iter <- nrow(tcr_pmhc)
-    pb <- txtProgressBar(min = 0,      # Minimum value of the progress bar
-                         max = n_iter, # Maximum value of the progress bar
-                         style = 3,    # Progress bar style (also available style = 1 and style = 2)
-                         width = 50,   # Progress bar width. Defaults to getOption("width")
-                         char = "+") 
-    
+    if (verbose){
+      n_iter <- nrow(tcr_pmhc)
+      pb <- txtProgressBar(min = 0,      # Minimum value of the progress bar
+                           max = n_iter, # Maximum value of the progress bar
+                           style = 3,    # Progress bar style (also available style = 1 and style = 2)
+                           width = 50,   # Progress bar width. Defaults to getOption("width")
+                           char = "+") 
+    }  
+      
     for (i in 1:n_iter){
       cell_ids_i <- ann_subset_ordered$clone_id == tcr_pmhc[i,]$clone_id
       cell_ids_i[is.na(cell_ids_i)] <- FALSE
@@ -399,9 +401,9 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
                     gp = gpar(col = "green", lwd = 2, fill = NA))
         }
       })
-      setTxtProgressBar(pb, i)
+      if (verbose) setTxtProgressBar(pb, i)
     }
-    close(pb)
+    if (verbose) close(pb)
   }
 }
 

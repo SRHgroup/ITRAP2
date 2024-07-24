@@ -30,6 +30,7 @@ pmhc_heatmap(
   show_legend_ann = c(F, T, T),
   bugged_width = 0.6,
   max_cols = 16000,
+  verbose = T,
   ...
 )
 }
