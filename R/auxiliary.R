@@ -66,11 +66,42 @@ ClonePseudobulk <- function(object, assay="pMHC", slot="scale.data",
   return(pseudobulk_means)
 }
 
-
+#' Drop NA Values from a Vector
+#'
+#' This function removes `NA` values from a given vector and returns the cleaned vector.
+#'
+#' @param vec A vector of any type (numeric, character, etc.) from which `NA` values are to be removed.
+#'
+#' @return A vector of the same type as the input `vec`, but with `NA` values removed.
+#'
+#' @examples
+#' # Remove NA values from a numeric vector
+#' drop.na(c(1, 2, NA, 4, 5, NA))
+#' # Output: c(1, 2, 4, 5)
+#'
+#' # Remove NA values from a character vector
+#' drop.na(c("a", "b", NA, "d"))
+#' # Output: c("a", "b", "d")
+#'
+#' @export
 drop.na <- function(vec){
   vec[!is.na(vec)]
 }
 
+#' Normalize a Numeric Vector
+#'
+#' This function normalizes a numeric vector to a range between 0 and 1.
+#'
+#' @param vec A numeric vector that you want to normalize.
+#'
+#' @return A numeric vector with values scaled to the range [0, 1].
+#'
+#' @examples
+#' # Normalize a numeric vector
+#' normalize_vector(c(1, 2, 3, 4, 5))
+#' # Output: c(0, 0.25, 0.5, 0.75, 1)
+#'
+#' @export
 normalize_vector <- function(vec) {
   if (!is.numeric(vec)) {
     stop("Input vector must be numeric")
@@ -84,6 +115,19 @@ normalize_vector <- function(vec) {
   return(normalized_vec)
 }
 
+#' Extract pMHC-TCR Pairs from Seurat Object
+#'
+#' This function extracts pMHC-TCR pairs from a Seurat object, ensuring each pair is written with each pair in a single row.
+#'
+#' @param object A Seurat object containing TCR and pMHC data.
+#'
+#' @return A data frame with each row representing a unique pMHC-TCR pair. The data frame includes columns for pMHC classification, confidence, p-values, clonotype details, and TCR details.
+#'
+#' @examples
+#' # Assuming `seurat_obj` is a Seurat object with relevant data
+#' pairs_df <- extract_pairs(seurat_obj)
+#'
+#' @export
 extract_pairs <- function(object){
   return(
     object@meta.data %>%
@@ -100,6 +144,24 @@ extract_pairs <- function(object){
     )
 }
 
+#' Plot TCR-pMHC Permutation Tests
+#'
+#' This function creates histograms for permutation tests and highlights, within simulated values per clone, where the observed clone value and stability lie.
+#'
+#' @param object A Seurat object containing TCR and pMHC data.
+#' @param clonal_id The ID of the clonotype to analyze.
+#' @param assay The assay to use for retrieving data. Default is 'pMHC'.
+#' @param slot The slot to use for retrieving data. Default is 'data'.
+#' @param stab_z The stability threshold for determining non-zero UMI counts. Default is 1.
+#' @param n_permutations The number of permutations to perform for the test. Default is 1000.
+#'
+#' @return A combined ggplot object showing histograms of simulated means and stabilities for each pMHC, with observed values highlighted.
+#'
+#' @examples
+#' # Assuming `seurat_obj` is a Seurat object with relevant data
+#' plot_tcr_pmhc_permutation(seurat_obj, clonal_id = 'clone_1')
+#'
+#' @export
 plot_tcr_pmhc_permutation <- function(object, clonal_id, assay = 'pMHC', 
                           slot='data', stab_z=1, n_permutations=1000){
   
@@ -125,7 +187,7 @@ plot_tcr_pmhc_permutation <- function(object, clonal_id, assay = 'pMHC',
   
   pmhc_mat <- GetAssayData(object, assay = assay, layer=slot)[pmhcs,]
   observed_means <- rowMeans(pmhc_mat[, clone_coords, drop=FALSE])
-  observed_stabs <- apply(pmhc_mat, 1, function(x) mean(x > stab_z))
+  observed_stabs <- apply(pmhc_mat[, clone_coords, drop=FALSE], 1, function(x) mean(x > stab_z))
   
   simulated_means <- matrix(NA, nrow = nrow(pmhc_mat), ncol = n_permutations)
   simulated_stabs <- matrix(NA, nrow = nrow(pmhc_mat), ncol = n_permutations)
@@ -171,8 +233,22 @@ plot_tcr_pmhc_permutation <- function(object, clonal_id, assay = 'pMHC',
 }
 
 
-
-
+#' Volcano Plot for pMHC-TCR Pairs
+#'
+#' This function creates a volcano plot using permutation p-values and confidence of pMHC-TCR pairs as an effect size metric.
+#'
+#' @param object A Seurat object containing TCR and pMHC data.
+#' @param conf_threshold The confidence threshold for highlighting significant points. Default is 0.5.
+#' @param pval_threshold The p-value threshold for highlighting significant points. Default is -log10(0.05).
+#'
+#' @return A ggplot object representing the volcano plot.
+#'
+#' @examples
+#' # Assuming `seurat_obj` is a Seurat object with relevant data
+#' volcano_plot <- pmhc_volcano_plot(seurat_obj)
+#' print(volcano_plot)
+#'
+#' @export
 pmhc_volcano_plot <- function(meta, conf_threshold=.5, pval_threshold=-log10(0.05)) {
   # Convert confidence to log scale if needed
   meta <- extract_pairs(object)
