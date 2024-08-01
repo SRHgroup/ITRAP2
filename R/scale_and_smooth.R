@@ -387,9 +387,9 @@ tcr_pmhc_permutation.test <- function(pmhc_mat, clone_coords, stab_z=1,
 #'
 #' @export
 
-assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_clones=F,
-                        cl_size_thresh=3, entropy_thresh=1, delta_threshold = 1, 
-                        filter_by_zscore=FALSE, filter_by_zscore_big_clones=FALSE,
+assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_clones=F, assignment='permutation',
+                        cl_size_thresh=3, entropy_thresh=1, delta_threshold = 1, n_tests=10, p_alpha=0.1,
+                        filter_by_zscore=FALSE, filter_by_zscore_big_clones=FALSE, top_down=F, 
                         z_score_threshold=2, calculate_pvalue=TRUE, calculate_confidence_score=TRUE,
                         alpha=1, beta=1, gamma=1, delta=1, force=F, verbose=TRUE, ...){
   
@@ -458,32 +458,37 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_cl
   if (verbose) cat('\nassigning pMHC-TCR pairs\n')
   
   clone_outliers <- list()
+  
   for (i in 1:n_iter) {
     cl_size <- object$clone_size[object$clone_id == colnames(clone_bulk)[i]] %>% unique() %>% drop.na()
     scores <- sort(clone_bulk[,i], decreasing = F)
     scores[scores < 0] <- 0
     diffs <- diff(scores)
-    gap_pos <- which(diffs > delta_threshold)[1]
+    
+    if (top_down){
+      gap_pos <- rev(which(diffs > delta_threshold))[1]
+    } else {
+      gap_pos <- which(diffs > delta_threshold)[1]
+    }
     
     scores_interpolated <- normalize_vector(scores[names(diffs)])
     
-    if (!is.na(gap_pos)) {
-      outliers <- scores[(gap_pos+1):length(scores)]
-      
-      entropy <- object@misc$noise_score[names(outliers),]$entropy
-      concordance <- calculate_pmhc_concordance(clone_obj = subset(object, clone_id == colnames(clone_bulk)[i]), 
-                                                assay='pMHC', slot='scale.data')
-      
-      concordance <- concordance[names(outliers)]
-      
-      background <- scores_interpolated[1:(gap_pos-1)]
-      positives <- scores_interpolated[names(diffs)][(gap_pos):length(diffs)]
-      
-      deltas <- positives - mean(background)
+    if (!is.na(gap_pos) | assignment == 'permutation') {
       
       clone_coords <- which(object$clone_id == colnames(clone_bulk)[i]) 
-      pmhc_mat <- GetAssayData(object, assay = 'pMHC', layer = 'data')[names(outliers),]
       
+      if (assignment == 'delta_gap'){
+        outliers <- scores[(gap_pos+1):length(scores)]
+        
+        background <- scores_interpolated[1:(gap_pos-1)]
+        positives <- scores_interpolated[names(diffs)][(gap_pos):length(diffs)]
+        
+        deltas <- positives - mean(background)
+      } else if (assignment == 'permutation'){
+        outliers <- diffs[(length(diffs)-n_tests):length(diffs)]
+      }
+    
+      pmhc_mat <- GetAssayData(object, assay = 'pMHC', layer = 'data')[names(outliers),]
       if (is.null(dim(pmhc_mat))) {
         pmhc_mat <- matrix(pmhc_mat, nrow = 1, byrow = TRUE,
                            dimnames = list(names(outliers), names(pmhc_mat)))  
@@ -491,12 +496,35 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_cl
       
       p_values <- tcr_pmhc_permutation.test(pmhc_mat=pmhc_mat, 
                                             clone_coords=clone_coords)
+      
+      if (assignment == 'permutation') {
+        if (sum(p_values < p_alpha) == 0){
+          clone_outliers[[colnames(clone_bulk)[i]]] <- list('confidence_scores'='Negative', 
+                                                            'p_values'='Negative')
+          next
+        } else {
+          outliers <- p_values[p_values < p_alpha]
+          positives <- scores_interpolated[names(outliers)]
+          background <- scores_interpolated[!names(scores_interpolated) %in% names(outliers)]
+          deltas <- positives - mean(background) 
+          }
+        }
+      
+      entropy <- object@misc$noise_score[names(outliers),]$entropy
+      concordance <- calculate_pmhc_concordance(clone_obj = subset(object, clone_id == colnames(clone_bulk)[i]), 
+                                                assay='pMHC', slot='scale.data')
+      
+      concordance <- concordance[names(outliers)]
+      
+      ########
+      ########
+      
       confidence_scores <- calculate_confidence(entropy=entropy, concordances=concordance, 
                                                 deltas=deltas, clone_size = cl_size, 
                                                 alpha = alpha, beta = beta, gamma = gamma, delta = delta)
     
-      clone_outliers[[colnames(clone_bulk)[i]]] <- list('confidence_scores'=confidence_scores, 
-                                                        'p_values'=p_values)
+      clone_outliers[[colnames(clone_bulk)[i]]] <- list('confidence_scores'=confidence_scores[names(outliers)], 
+                                                        'p_values'=p_values[names(outliers)])
     } else {
       clone_outliers[[colnames(clone_bulk)[i]]] <- list('confidence_scores'='Negative', 
                                                         'p_values'='Negative')

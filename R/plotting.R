@@ -87,7 +87,8 @@ clonal_pmhc_heatmap <- function(data_matrix) {
 #' @importFrom ggplot2 ggplot geom_jitter geom_hline theme_classic labs geom_bar
 #' @importFrom cowplot plot_grid draw_label
 #' @export
-pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10, slot = 'counts', xlimits=NULL){
+pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10, 
+                                slot = 'counts', xlimits=NULL, return_pmhcs=F){
   
   clone_obj <- subset(object, clone_id == clone)
   
@@ -152,7 +153,15 @@ pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10, slot = 'counts
   
   title <- cowplot::ggdraw() + cowplot::draw_label(paste0('clonotype = ', clone, '; #gems=', ncol(pmhc_matrix)), fontface='bold')
   
-  return(cowplot::plot_grid(title, combined_plot, ncol = 1, rel_heights=c(0.05, 1)))
+  if (return_pmhcs){
+    return(list(
+      'plot'=cowplot::plot_grid(title, combined_plot, ncol = 1, rel_heights=c(0.05, 1)),
+      'pmhc_vec'=concordance_df
+      )
+    )
+  } else {
+    return(cowplot::plot_grid(title, combined_plot, ncol = 1, rel_heights=c(0.05, 1)))
+  }
 }
 
 #' Generate a Heatmap of pMHC Distribution Across Clones

@@ -9,7 +9,8 @@ pmhc_dist_per_clone(
   clone,
   aggr_threshold = 10,
   slot = "counts",
-  xlimits = NULL
+  xlimits = NULL,
+  return_pmhcs = F
 )
 }
 \arguments{
