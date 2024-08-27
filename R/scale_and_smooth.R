@@ -320,12 +320,28 @@ filter_by_z_score <- function(scaled_mat, z_score_threshold){
 }
 
 # store scaled in data and use it here
-tcr_pmhc_permutation.test <- function(pmhc_mat, clone_coords, stab_z=1, 
+
+#' Perform permutation test for a specific pMHC-TCR pair
+#' 
+#' Perform permutation test for a specific pMHC-TCR pair
+#' @param sample_permutation whether to downsample values within the same pMHC, 
+#' ('within_pmhc') or across any random pMHC ('random')
+#' @return (`numeric`)  
+#'
+#' @examples
+#' tcr_pmhc_permutation.test()
+#'
+#' @export
+
+tcr_pmhc_permutation.test <- function(pmhc_mat, pmhc_to_test, 
+                                      clone_coords, stab_z=1, 
+                                      sample_permutation='within_pmhc',
                                       n_permutations=1000, p_adj_method='BH') {
   
   cl_size <- length(clone_coords)
-  observed_means <- rowMeans(pmhc_mat[, clone_coords, drop=FALSE])
-  observed_stabs <- apply(pmhc_mat, 1, function(x) mean(x > stab_z))
+  
+  observed_means <- rowMeans(pmhc_mat[, clone_coords, drop=FALSE])[pmhc_to_test]
+  observed_stabs <- apply(pmhc_mat, 1, function(x) mean(x > stab_z))[pmhc_to_test]
   
   simulated_means <- matrix(NA, nrow = nrow(pmhc_mat), ncol = n_permutations)
   simulated_stabs <- matrix(NA, nrow = nrow(pmhc_mat), ncol = n_permutations)
@@ -333,15 +349,21 @@ tcr_pmhc_permutation.test <- function(pmhc_mat, clone_coords, stab_z=1,
   rownames(simulated_means) <- rownames(pmhc_mat)
   rownames(simulated_stabs) <- rownames(pmhc_mat)
   
-  for (i in 1:n_permutations) {
-    sampled_columns <- sample(ncol(pmhc_mat), cl_size, replace = FALSE)
-    simulated_means[, i] <- rowMeans(pmhc_mat[, sampled_columns, drop=FALSE])
-    simulated_stabs[, i] <- apply(pmhc_mat[, sampled_columns, drop=FALSE], 1, function(x) mean(x > stab_z))
+  if (sample_permutation == 'random'){
+    barcodes <- rownames(pmhc_mat)
+    pmhc_mat <- apply(pmhc_mat, 2, sample)
+    rownames(pmhc_mat) <- barcodes
   }
   
-  means_p_values <- sapply(rownames(simulated_means), 
+  for (i in 1:n_permutations) {
+      sampled_columns <- sample(ncol(pmhc_mat), cl_size, replace = FALSE)
+      simulated_means[, i] <- rowMeans(pmhc_mat[, sampled_columns, drop=FALSE])
+      simulated_stabs[, i] <- apply(pmhc_mat[, sampled_columns, drop=FALSE], 1, function(x) mean(x > stab_z))
+    }
+  
+  means_p_values <- sapply(pmhc_to_test, 
                            function(pmhc) mean(simulated_means[pmhc,] >= observed_means[pmhc]))
-  stabs_p_values <- sapply(rownames(simulated_stabs), 
+  stabs_p_values <- sapply(pmhc_to_test, 
                            function(pmhc) mean(simulated_stabs[pmhc,] >= observed_stabs[pmhc]))
 
   combined_p_values <- mapply(function(p1, p2) {
@@ -378,6 +400,8 @@ tcr_pmhc_permutation.test <- function(pmhc_mat, clone_coords, stab_z=1,
 #' clones (<cl_size_thresh), smaller clones result in less confidence, so if 
 #' you aim for high precision you may want to skip them, this will also make the 
 #' assignment run way faster
+#' @param sample_permutation whether to downsample values within the same pMHC, 
+#' ('within_pmhc') or across any random pMHC ('random')
 #' @param verbose whether to show a progress bar
 #' 
 #' @return (`Seurat`) with the ScaleData slot with scaled pMHC counts smoothed 
@@ -387,8 +411,9 @@ tcr_pmhc_permutation.test <- function(pmhc_mat, clone_coords, stab_z=1,
 #'
 #' @export
 
-assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_clones=F, assignment='permutation',
-                        cl_size_thresh=3, entropy_thresh=1, delta_threshold = 1, n_tests=10, p_alpha=0.1,
+assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_clones=F, 
+                        assignment='delta_gap', cl_size_thresh=3, entropy_thresh=1, 
+                        delta_threshold = 1, n_tests=10, p_alpha=0.1, sample_permutation='within_pmhc',
                         filter_by_zscore=FALSE, filter_by_zscore_big_clones=FALSE, top_down=F, 
                         z_score_threshold=2, calculate_pvalue=TRUE, calculate_confidence_score=TRUE,
                         alpha=1, beta=1, gamma=1, delta=1, force=F, verbose=TRUE, ...){
@@ -488,14 +513,34 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_cl
         outliers <- diffs[(length(diffs)-n_tests):length(diffs)]
       }
     
-      pmhc_mat <- GetAssayData(object, assay = 'pMHC', layer = 'data')[names(outliers),]
-      if (is.null(dim(pmhc_mat))) {
-        pmhc_mat <- matrix(pmhc_mat, nrow = 1, byrow = TRUE,
-                           dimnames = list(names(outliers), names(pmhc_mat)))  
+      if (sample_permutation == 'within_pmhc'){
+        pmhc_mat <- GetAssayData(object, assay = 'pMHC', layer = 'data')[names(outliers),]
+        
+        if (is.null(dim(pmhc_mat))) {
+          pmhc_mat <- matrix(pmhc_mat, nrow = 1, byrow = TRUE,
+                             dimnames = list(names(outliers), names(pmhc_mat)))  
+        }
+        
+        p_values <- tcr_pmhc_permutation.test(pmhc_mat=pmhc_mat, 
+                                              pmhc_to_test=names(outliers),
+                                              sample_permutation=sample_permutation,
+                                              clone_coords=clone_coords)
+      } else if (sample_permutation == 'random'){
+        pmhc_mat <- GetAssayData(object, assay = 'pMHC', layer = 'data')
+        
+        if (is.null(dim(pmhc_mat))) {
+          pmhc_mat <- matrix(pmhc_mat, nrow = 1, byrow = TRUE,
+                             dimnames = list(names(outliers), names(pmhc_mat)))  
+        }
+        
+        p_values <- tcr_pmhc_permutation.test(pmhc_mat=pmhc_mat, 
+                                              pmhc_to_test=names(outliers),
+                                              sample_permutation=sample_permutation,
+                                              clone_coords=clone_coords)
+      } else {
+        stop('sample_permutation must be either "random" or "within_pmhc"')
       }
       
-      p_values <- tcr_pmhc_permutation.test(pmhc_mat=pmhc_mat, 
-                                            clone_coords=clone_coords)
       
       if (assignment == 'permutation') {
         if (sum(p_values < p_alpha) == 0){

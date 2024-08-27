@@ -205,7 +205,7 @@ pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10,
 #' @importFrom circlize colorRamp2
 #' @export
 pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_order=NULL, split_cols=FALSE,
-                         hm_breaks = c(0, 4, 10), hm_palette=c("blue", "white", "red"), pmhc_palette=NULL,
+                         hm_breaks = NULL, hm_palette=c("blue", "white", "red"), pmhc_palette=NULL,
                          condpalette=NULL, highlight_pmhc.tcr=F, stop_large_highlighting=T, rowm.fonts=8,  
                          column_title_fonts = 10, column_title_rot = 45, use_original_order=T, clean_mat=F, 
                          add_tcr_cluster=F, show_row_names=T, pmhc_subset=NULL, custom_annotations=c(), 
@@ -294,6 +294,14 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
     positive_bc <- positive_bc %>% unique() %>% 
       strsplit(., ":", fixed = TRUE) %>% unlist() %>% unique()
     pmhc_mat = pmhc_mat[positive_bc,]
+  }
+  
+  if (is.null(hm_breaks)){
+    if (slot == 'scale.data'){
+      hm_breaks <- c(-5, 0, 5)
+    } else {
+      hm_breaks <- c(0, 4, 10)
+    }
   }
   
   col_fun = colorRamp2(hm_breaks, hm_palette)
