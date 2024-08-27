@@ -11,7 +11,7 @@ pmhc_heatmap(
   slot = "counts",
   clones_order = NULL,
   split_cols = FALSE,
-  hm_breaks = c(0, 4, 10),
+  hm_breaks = NULL,
   hm_palette = c("blue", "white", "red"),
   pmhc_palette = NULL,
   condpalette = NULL,

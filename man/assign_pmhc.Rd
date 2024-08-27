@@ -9,12 +9,13 @@ assign_pmhc(
   slot = "scale.data",
   assay = "pMHC",
   assign_small_clones = F,
-  assignment = "permutation",
+  assignment = "delta_gap",
   cl_size_thresh = 3,
   entropy_thresh = 1,
   delta_threshold = 1,
   n_tests = 10,
   p_alpha = 0.1,
+  sample_permutation = "within_pmhc",
   filter_by_zscore = FALSE,
   filter_by_zscore_big_clones = FALSE,
   top_down = F,
@@ -49,6 +50,9 @@ extremely noisy pMHCs.}
 
 \item{delta_threshold}{what should be a threshold that differentiates
 background from specificity signal, recommended from 0.7 to 1}
+
+\item{sample_permutation}{whether to downsample values within the same pMHC,
+('within_pmhc') or across any random pMHC ('random')}
 
 \item{verbose}{whether to show a progress bar}
 }
