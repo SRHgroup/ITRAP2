@@ -333,15 +333,15 @@ filter_by_z_score <- function(scaled_mat, z_score_threshold){
 #'
 #' @export
 
-tcr_pmhc_permutation.test <- function(pmhc_mat, pmhc_to_test, 
+tcr_pmhc_permutation.test <- function(pmhc_mat, barcodes_to_test, 
                                       clone_coords, stab_z=1, 
                                       sample_permutation='within_pmhc',
                                       n_permutations=1000, p_adj_method='BH') {
   
   cl_size <- length(clone_coords)
   
-  observed_means <- rowMeans(pmhc_mat[, clone_coords, drop=FALSE])[pmhc_to_test]
-  observed_stabs <- apply(pmhc_mat, 1, function(x) mean(x > stab_z))[pmhc_to_test]
+  observed_means <- rowMeans(pmhc_mat[, clone_coords, drop=FALSE])[barcodes_to_test]
+  observed_stabs <- apply(pmhc_mat, 1, function(x) mean(x > stab_z))[barcodes_to_test]
   
   simulated_means <- matrix(NA, nrow = nrow(pmhc_mat), ncol = n_permutations)
   simulated_stabs <- matrix(NA, nrow = nrow(pmhc_mat), ncol = n_permutations)
@@ -361,9 +361,9 @@ tcr_pmhc_permutation.test <- function(pmhc_mat, pmhc_to_test,
       simulated_stabs[, i] <- apply(pmhc_mat[, sampled_columns, drop=FALSE], 1, function(x) mean(x > stab_z))
     }
   
-  means_p_values <- sapply(pmhc_to_test, 
+  means_p_values <- sapply(barcodes_to_test, 
                            function(pmhc) mean(simulated_means[pmhc,] >= observed_means[pmhc]))
-  stabs_p_values <- sapply(pmhc_to_test, 
+  stabs_p_values <- sapply(barcodes_to_test, 
                            function(pmhc) mean(simulated_stabs[pmhc,] >= observed_stabs[pmhc]))
 
   combined_p_values <- mapply(function(p1, p2) {
@@ -522,7 +522,7 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_cl
         }
         
         p_values <- tcr_pmhc_permutation.test(pmhc_mat=pmhc_mat, 
-                                              pmhc_to_test=names(outliers),
+                                              barcodes_to_test=names(outliers),
                                               sample_permutation=sample_permutation,
                                               clone_coords=clone_coords)
       } else if (sample_permutation == 'random'){
@@ -534,7 +534,7 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_cl
         }
         
         p_values <- tcr_pmhc_permutation.test(pmhc_mat=pmhc_mat, 
-                                              pmhc_to_test=names(outliers),
+                                              barcodes_to_test=names(outliers),
                                               sample_permutation=sample_permutation,
                                               clone_coords=clone_coords)
       } else {
@@ -582,6 +582,7 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_cl
   
   pmhc_bc <- setNames(object@misc$pmhc$pmhc, object@misc$pmhc$Barcode)
   df <- do.call(rbind, lapply(names(clone_outliers), function(x) {
+    #print(x)
     confidences <- clone_outliers[[x]]$confidence_scores
     p_values <- clone_outliers[[x]]$p_values
     confidence_is_negative <- length(confidences) == 1 && confidences == "Negative"

@@ -14,6 +14,7 @@ pmhc_heatmap(
   hm_breaks = NULL,
   hm_palette = c("blue", "white", "red"),
   pmhc_palette = NULL,
+  pmhc_order = NULL,
   condpalette = NULL,
   highlight_pmhc.tcr = F,
   stop_large_highlighting = T,

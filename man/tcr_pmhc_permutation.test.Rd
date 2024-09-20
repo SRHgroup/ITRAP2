@@ -6,7 +6,7 @@
 \usage{
 tcr_pmhc_permutation.test(
   pmhc_mat,
-  pmhc_to_test,
+  barcodes_to_test,
   clone_coords,
   stab_z = 1,
   sample_permutation = "within_pmhc",

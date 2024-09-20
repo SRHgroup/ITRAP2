@@ -75,7 +75,8 @@ calc_entropy <- function(vec, quantiles) {
 #' seurat_obj <- score_pmhc_noise(seurat_obj, how = 'per_clone', downsample_rate = 0.2)
 #'
 #' @export
-score_pmhc_noise <- function(object, how=c('per_clone', 'pseudobulk'), downsample_rate=.20, verbose=T){
+score_pmhc_noise <- function(object, how=c('per_clone', 'pseudobulk'), 
+                             downsample_rate=.20, verbose=T, slot='counts'){
   
   if (downsample_rate < 0 | downsample_rate > 1){
     stop('downsample rate must be between 0 and 1')
@@ -84,7 +85,9 @@ score_pmhc_noise <- function(object, how=c('per_clone', 'pseudobulk'), downsampl
   pmhc_names <- rownames(object@assays$pMHC)
   object_sub <- subset(object, cells = Cells(object)[!is.na(object$clone_id)])
   
-  nonzero <- apply(object@assays$pMHC@counts, 1, function(x) sum(x > 0) / length(Cells(object))) %>% sort()
+  pmhc_mat <- GetAssayData(object, layer = slot)
+  
+  nonzero <- apply(pmhc_mat, 1, function(x) sum(x > 0) / length(Cells(object))) %>% sort()
   object@misc$non0_pmhc <- nonzero
   
   downsampled_clones <- object_sub@meta.data %>% filter(clone_size>1) %>%
@@ -96,7 +99,7 @@ score_pmhc_noise <- function(object, how=c('per_clone', 'pseudobulk'), downsampl
 
   entropies <- list()
   
-  pmhc_quantiles <- apply(GetAssayData(object, assay = 'pMHC', layer = 'counts'),
+  pmhc_quantiles <- apply(GetAssayData(object, assay = 'pMHC', layer = slot),
                           1, function(vec) quantile(vec, probs = c(.2, .4, .6, .8, 1), 
                                                     na.rm = TRUE, names = FALSE), 
                           simplify = F)
@@ -113,7 +116,7 @@ score_pmhc_noise <- function(object, how=c('per_clone', 'pseudobulk'), downsampl
       cat('\ncalculating pMHC entropy on per clone basis\n')
     }
     for (cl in downsampled_clones){
-      data_matrix <- GetAssayData(subset(object, clone_id==cl), layer='counts', assay='pMHC')
+      data_matrix <- GetAssayData(subset(object, clone_id==cl), layer=slot, assay='pMHC')
       rows_list <- split(data_matrix[pmhc_names,], pmhc_names)
       
       entropies <- mapply(calc_entropy, rows_list[pmhc_names], pmhc_quantiles[pmhc_names])
@@ -130,7 +133,7 @@ score_pmhc_noise <- function(object, how=c('per_clone', 'pseudobulk'), downsampl
   } else if (how == 'pseudobulk') {
     cat('\ncalculating pMHC entropy in pseudobulk mode\n')
     data_matrix <- AverageExpression(subset(object, clone_id %in% downsampled_clones), 
-                                     layer='counts', group.by = 'clone_id', assays = 'pMHC')$pMHC
+                                     layer=slot, group.by = 'clone_id', assays = 'pMHC')$pMHC
     
     rows_list <- split(data_matrix[pmhc_names,], pmhc_names)
     
@@ -194,13 +197,20 @@ calculate_pmhc_concordance <- function(clone_obj, exclude_top_pmhc = TRUE,
   concordance <- calc_concordance(pmhc_counts)
   
   if (exclude_top_pmhc) {
-    npos <- apply(pmhc_counts > z_score_c, 1, function(x) sum(x) / length(x)) %>% sort(decreasing = TRUE)
+    npos <- apply(pmhc_counts > z_score_c, 1, function(x) sum(x) / length(x)) %>% sort(decreasing = TRUE) 
     reactions <- names(npos[npos > fraction_c])
+    top_index <- names(concordance)[which.max(concordance)]
     
     if (length(reactions) > 1) {
-      for (i in 2:length(reactions)) {  # Start from 2 since the first is already calculated
+      if (!top_index %in% reactions){
+        reactions <- c(top_index, reactions)
+      }
+      if (reactions[1] != top_index){
+        reactions <- c(top_index, reactions[-which(reactions == top_index)])
+      } 
+      for (i in 2:length(reactions)) {  
         exclude_indices <- match(reactions[1:(i - 1)], rownames(pmhc_counts))
-        remaining_counts <- pmhc_counts[-exclude_indices, , drop = FALSE]
+        remaining_counts <- pmhc_counts[-c(exclude_indices), , drop = FALSE]
         adjusted_concordance <- calc_concordance(remaining_counts)
         
         current_reaction_index <- match(reactions[i], rownames(pmhc_counts))

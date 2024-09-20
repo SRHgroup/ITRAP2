@@ -8,7 +8,8 @@ score_pmhc_noise(
   object,
   how = c("per_clone", "pseudobulk"),
   downsample_rate = 0.2,
-  verbose = T
+  verbose = T,
+  slot = "counts"
 )
 }
 \arguments{

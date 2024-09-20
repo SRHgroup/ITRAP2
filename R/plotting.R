@@ -87,8 +87,9 @@ clonal_pmhc_heatmap <- function(data_matrix) {
 #' @importFrom ggplot2 ggplot geom_jitter geom_hline theme_classic labs geom_bar
 #' @importFrom cowplot plot_grid draw_label
 #' @export
-pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10, 
-                                slot = 'counts', xlimits=NULL, return_pmhcs=F){
+pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10, slot = 'counts', 
+                                xlimits=NULL, return_pmhcs=F, display_pvalues=F, 
+                                ...){
   
   clone_obj <- subset(object, clone_id == clone)
   
@@ -132,7 +133,8 @@ pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10,
     dists <- dists + xlim(xlimits)
   }
   
-  concordance <- calculate_pmhc_concordance(clone_obj, slot=slot, preserve_pmhc = names(pmhc_labels)[pmhc_labels %in% preserve])
+  concordance <- calculate_pmhc_concordance(clone_obj = clone_obj, slot=slot, 
+                                            preserve_pmhc = names(pmhc_labels)[pmhc_labels %in% preserve], ...)
   names(concordance) <- recode(names(concordance), !!!pmhc_labels)
   concordance_df <- data.frame(pmhc = factor(names(concordance),levels=rev(preserve)),
                                concordance = concordance)
@@ -205,7 +207,7 @@ pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10,
 #' @importFrom circlize colorRamp2
 #' @export
 pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_order=NULL, split_cols=FALSE,
-                         hm_breaks = NULL, hm_palette=c("blue", "white", "red"), pmhc_palette=NULL,
+                         hm_breaks = NULL, hm_palette=c("blue", "white", "red"), pmhc_palette=NULL, pmhc_order=NULL,
                          condpalette=NULL, highlight_pmhc.tcr=F, stop_large_highlighting=T, rowm.fonts=8,  
                          column_title_fonts = 10, column_title_rot = 45, use_original_order=T, clean_mat=F, 
                          add_tcr_cluster=F, show_row_names=T, pmhc_subset=NULL, custom_annotations=c(), 
@@ -332,6 +334,10 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
   
   ann_subset_ordered <- ann_subset[cells_order,]
   pmhc_mat_ordered <- pmhc_mat[,cells_order]
+  
+  if (!is.null(pmhc_order)){
+    pmhc_mat_ordered <- pmhc_mat_ordered[pmhc_order,]
+  }
   
   custom_ann_list <- setNames(lapply(custom_annotations, function(cn) ann_subset[cells_order,][[cn]]), custom_annotations)
   
