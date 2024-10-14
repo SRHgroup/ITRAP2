@@ -120,7 +120,7 @@ normalize_vector <- function(vec) {
 #' This function extracts pMHC-TCR pairs from a Seurat object, ensuring each pair is written with each pair in a single row.
 #'
 #' @param object A Seurat object containing TCR and pMHC data.
-#'
+#' @param custom_columns a character vector of columns from your `objects meta.data you want to include 
 #' @return A data frame with each row representing a unique pMHC-TCR pair. The data frame includes columns for pMHC classification, confidence, p-values, clonotype details, and TCR details.
 #'
 #' @examples
@@ -128,20 +128,26 @@ normalize_vector <- function(vec) {
 #' pairs_df <- extract_pairs(seurat_obj)
 #'
 #' @export
-extract_pairs <- function(object){
+extract_pairs <- function(object, custom_columns = NULL){
+  
+  default_columns <- c("pMHC_classification", "pMHC_confidence", "pMHC_pvalues",
+                       "clone_id", "junction_beta", "junction_alpha", "clone_id",
+                       "v_call_beta", "c_call_beta", "j_call_beta", "d_call_beta",
+                       "v_call_alpha", "c_call_alpha", "j_call_alpha", "d_call_alpha")
+  
+  all_columns <- c(default_columns, custom_columns)
+  
   return(
     object@meta.data %>%
-    filter(pMHC_classification != 'Negative' & !is.na(pMHC_classification)) %>%
-    filter(productive_beta & productive_alpha) %>%
-    select(pMHC_classification, pMHC_confidence, pMHC_pvalues,
-           clone_id, junction_beta, junction_alpha, clone_id,
-           v_call_beta, c_call_beta, j_call_beta, d_call_beta,
-           v_call_alpha, c_call_alpha, j_call_alpha, d_call_alpha) %>%
-    separate_rows(c(pMHC_classification, pMHC_confidence, pMHC_pvalues), sep = ':') %>%
-    mutate(peptide = gsub('-.+', '', pMHC_classification)) %>%
-    mutate(tcr_pmhc = paste0(junction_beta, '_', junction_alpha, '_', peptide)) %>%
-    distinct()
-    )
+      filter(pMHC_classification != 'Negative' & !is.na(pMHC_classification)) %>%
+      filter(productive_beta & productive_alpha) %>%
+      select(!!!syms(all_columns)) %>%
+      separate_rows(c(pMHC_classification, pMHC_confidence, pMHC_pvalues), sep = ':') %>%
+      mutate(HLA = gsub('_.+', '', pMHC_classification)) %>%
+      mutate(peptide = gsub('.+_', '', pMHC_classification)) %>%
+      mutate(tcr_pmhc = paste0(junction_beta, '_', junction_alpha, '_', peptide)) %>%
+      distinct()
+  )
 }
 
 #' Plot TCR-pMHC Permutation Tests

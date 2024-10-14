@@ -411,8 +411,8 @@ tcr_pmhc_permutation.test <- function(pmhc_mat, barcodes_to_test,
 #'
 #' @export
 
-assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_clones=F, 
-                        assignment='delta_gap', cl_size_thresh=3, entropy_thresh=1, 
+assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_clones=F, trim_outliers_for_zassignment=T,
+                        assignment='delta_gap', cl_size_thresh=3, entropy_thresh=1, assigment_z_score_threshold=2, kmax=10,
                         delta_threshold = 1, n_tests=10, p_alpha=0.1, sample_permutation='within_pmhc',
                         filter_by_zscore=FALSE, filter_by_zscore_big_clones=FALSE, top_down=F, 
                         z_score_threshold=2, calculate_pvalue=TRUE, calculate_confidence_score=TRUE,
@@ -432,6 +432,9 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_cl
     object$pMHC_classification <- 'Negative'
     if (verbose) cat('No pmhc barcode annotation is found in object@misc$pmhc\n')
     return(object)
+  }
+  if (!assignment %in% c('z-score', 'permutation', 'delta_gap')){
+    stop('assigment must be either z-score, permutation or delta_gap, or check your spelling')
   }
   
   clones <- object$clone_id[!is.na(object$clone_id)]
@@ -511,6 +514,36 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_cl
         deltas <- positives - mean(background)
       } else if (assignment == 'permutation'){
         outliers <- diffs[(length(diffs)-n_tests):length(diffs)]
+      } else if (assignment == 'z-score'){
+        
+        if (trim_outliers_for_zassignment){
+          zscores <- sort((scores-mean(scores))/sd(scores))
+          mean_score <- mean(scores[abs(zscores) < 3])
+          sd_score <- sd(scores[abs(zscores) < 3])
+        } else {
+          mean_score <- mean(scores)
+          sd_score <- sd(scores)
+        }
+        zscores <- sort((scores-mean_score)/sd_score)
+        
+        outliers <- scores[zscores > assigment_z_score_threshold]
+        
+        background <- scores_interpolated[!names(scores_interpolated) %in% names(outliers)]
+        positives <- scores_interpolated[names(scores_interpolated) %in% names(outliers)]
+        
+        deltas <- positives - mean(background)
+      } else if (assigment == 'rosner'){
+        
+        rosner <- EnvStats::rosnerTest(scores[scores != 0], k=kmax)
+        
+        gap_pos <- rosner$all.stats %>% filter(Outlier) %>% slice_min(order_by = Value, n = 1) %>% pull(Value)
+        
+        outliers <- scores[scores >= gap_pos]
+        
+        background <- scores_interpolated[!names(scores_interpolated) %in% names(outliers)]
+        positives <- scores_interpolated[names(scores_interpolated) %in% names(outliers)]
+        
+        deltas <- positives - mean(background)
       }
     
       if (sample_permutation == 'within_pmhc'){

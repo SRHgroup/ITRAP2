@@ -4,10 +4,12 @@
 \alias{extract_pairs}
 \title{Extract pMHC-TCR Pairs from Seurat Object}
 \usage{
-extract_pairs(object)
+extract_pairs(object, custom_columns = NULL)
 }
 \arguments{
 \item{object}{A Seurat object containing TCR and pMHC data.}
+
+\item{custom_columns}{a character vector of columns from your `objects meta.data you want to include}
 }
 \value{
 A data frame with each row representing a unique pMHC-TCR pair. The data frame includes columns for pMHC classification, confidence, p-values, clonotype details, and TCR details.
