@@ -289,7 +289,9 @@ calculate_confidence <- function(entropy, concordances, clone_size, deltas,
 #' @export
 #object <- subset(obj, clone_id %in% weird)
 filter_pmhc <- function(object, confidence_cutoff=1.5, pvalue_cutoff=0.2,
-                        apply_confidence_filter=T, apply_pvalue_filter=T) { #### BUGGED PVAL FILTER IF CUTOFF IS HIGH
+                        p_value_or_confidence=F, 
+                        apply_confidence_filter=T, 
+                        apply_pvalue_filter=T) { #### BUGGED PVAL FILTER IF CUTOFF IS HIGH
   
   if (is.null(object@commands$pmhc_filter)) {
     object@meta.data$pMHC_classification_unf <- object@meta.data$pMHC_classification
@@ -329,7 +331,9 @@ filter_pmhc <- function(object, confidence_cutoff=1.5, pvalue_cutoff=0.2,
     }
     
     # Determine valid indices based on filters
-    if (apply_confidence_filter && apply_pvalue_filter) {
+    if (p_value_or_confidence){
+      valid_indices <- which(confidences >= confidence_cutoff | pvalues <= pvalue_cutoff)
+    } else if (apply_confidence_filter && apply_pvalue_filter) {
       valid_indices <- which(confidences >= confidence_cutoff & pvalues <= pvalue_cutoff)
     } else if (apply_confidence_filter) {
       valid_indices <- which(confidences >= confidence_cutoff)

@@ -8,6 +8,7 @@ filter_pmhc(
   object,
   confidence_cutoff = 1.5,
   pvalue_cutoff = 0.2,
+  p_value_or_confidence = F,
   apply_confidence_filter = T,
   apply_pvalue_filter = T
 )

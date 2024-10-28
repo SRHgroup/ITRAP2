@@ -411,9 +411,11 @@ tcr_pmhc_permutation.test <- function(pmhc_mat, barcodes_to_test,
 #'
 #' @export
 
-assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_clones=F, trim_outliers_for_zassignment=T,
-                        assignment='delta_gap', cl_size_thresh=3, entropy_thresh=1, assigment_z_score_threshold=2, kmax=10,
-                        delta_threshold = 1, n_tests=10, p_alpha=0.1, sample_permutation='within_pmhc',
+assign_pmhc <- function(object, slot='scale.data', assay='pMHC', 
+                        assignment='rosner', params = 'iteratively', remove_for_params = 3, assign_small_clones=F, 
+                        trim_outliers_for_zassignment=NULL, assigment_z_score_threshold=2,
+                        cl_size_thresh=3, entropy_thresh=1, kmax=10, rosner_alpha=0.05, extreme_alpha=0.05, delta_threshold = 1, 
+                        n_tests=10, p_alpha=0.1, sample_permutation='within_pmhc', predefined_extreme_params=NULL,
                         filter_by_zscore=FALSE, filter_by_zscore_big_clones=FALSE, top_down=F, 
                         z_score_threshold=2, calculate_pvalue=TRUE, calculate_confidence_score=TRUE,
                         alpha=1, beta=1, gamma=1, delta=1, force=F, verbose=TRUE, ...){
@@ -433,9 +435,21 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_cl
     if (verbose) cat('No pmhc barcode annotation is found in object@misc$pmhc\n')
     return(object)
   }
-  if (!assignment %in% c('z-score', 'permutation', 'delta_gap')){
-    stop('assigment must be either z-score, permutation or delta_gap, or check your spelling')
+  if (!assignment %in% c('z-score', 'permutation', 'delta_gap', 'rosner', 'extreme_distribution')){
+    stop('assigment must be either z-score, permutation or delta_gap or extreme_distribution, or check your spelling')
   }
+  
+  if (!"clone_size" %in% names(object@meta.data)) {
+    object@meta.data <- object@meta.data %>%
+      tibble::rownames_to_column('row_id') %>% 
+      group_by(clone_id) %>%
+      mutate(clone_size = n()) %>%
+      ungroup() %>% 
+      tibble::column_to_rownames('row_id')
+    
+    object$clone_size[is.na(object$clone_id)] <- NA
+  }
+  
   
   clones <- object$clone_id[!is.na(object$clone_id)]
   big_clones <- names(table(clones)[table(clones) > cl_size_thresh])
@@ -488,6 +502,7 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_cl
   clone_outliers <- list()
   
   for (i in 1:n_iter) {
+    #print(i)
     cl_size <- object$clone_size[object$clone_id == colnames(clone_bulk)[i]] %>% unique() %>% drop.na()
     scores <- sort(clone_bulk[,i], decreasing = F)
     scores[scores < 0] <- 0
@@ -516,14 +531,24 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_cl
         outliers <- diffs[(length(diffs)-n_tests):length(diffs)]
       } else if (assignment == 'z-score'){
         
-        if (trim_outliers_for_zassignment){
+        if (is.numeric(trim_outliers_for_zassignment)){
           zscores <- sort((scores-mean(scores))/sd(scores))
           mean_score <- mean(scores[abs(zscores) < 3])
           sd_score <- sd(scores[abs(zscores) < 3])
+        } else if (is.character(trim_outliers_for_zassignment)){
+          trim_outliers_for_zassignment <- as.numeric(trim_outliers_for_zassignment)
+          
+          trimmed_zscores <- zscores[!(zscores %in% 
+                              sort(zscores, decreasing = TRUE)[1:trim_outliers_for_zassignment])]
+          
+          mean_score <- mean(trimmed_zscores)
+          sd_score <- sd(trimmed_zscores)
+          
         } else {
           mean_score <- mean(scores)
           sd_score <- sd(scores)
         }
+        
         zscores <- sort((scores-mean_score)/sd_score)
         
         outliers <- scores[zscores > assigment_z_score_threshold]
@@ -532,9 +557,22 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_cl
         positives <- scores_interpolated[names(scores_interpolated) %in% names(outliers)]
         
         deltas <- positives - mean(background)
-      } else if (assigment == 'rosner'){
+      } else if (assignment == 'rosner'){
         
-        rosner <- EnvStats::rosnerTest(scores[scores != 0], k=kmax)
+        if (length(scores[scores != 0]) < 25){
+          scores <- scores[order(scores)[(length(scores)-26):length(scores)]]
+        } else {
+          scores <- scores[scores != 0]
+        }
+        
+        rosner <- rosnerTest(scores, k=kmax, alpha = rosner_alpha, 
+                             params = params, remove_for_params = remove_for_params)
+        
+        if (all(!rosner$all.stats$Outlier)){
+          clone_outliers[[colnames(clone_bulk)[i]]] <- list('confidence_scores'='Negative', 
+                                                            'p_values'='Negative')
+          next
+        }
         
         gap_pos <- rosner$all.stats %>% filter(Outlier) %>% slice_min(order_by = Value, n = 1) %>% pull(Value)
         
@@ -544,6 +582,40 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', assign_small_cl
         positives <- scores_interpolated[names(scores_interpolated) %in% names(outliers)]
         
         deltas <- positives - mean(background)
+      } else if (assignment == 'extreme_distribution'){
+        ##################
+        ##################
+        
+        if (is.null(predefined_extreme_params)){
+          extr <- extRemes::fevd(scores)
+          
+          location <- extr$results$par["location"]
+          scale <- extr$results$par["scale"]
+          shape <- extr$results$par["shape"]
+        } else {
+          location <- predefined_extreme_params["location"]
+          scale <- predefined_extreme_params["scale"]
+          shape <- predefined_extreme_params["shape"]
+        }
+        
+        
+        pvalues <- 1-extRemes::pevd(q = scores, loc = location, scale = scale, shape = shape)
+        
+        if (sum((pvalues)<extreme_alpha)==0){
+          clone_outliers[[colnames(clone_bulk)[i]]] <- list('confidence_scores'='Negative', 
+                                                            'p_values'='Negative')
+          next
+        }
+        
+        outliers <- scores[which(pvalue<extreme_alpha)]
+        
+        background <- scores_interpolated[!names(scores_interpolated) %in% names(outliers)]
+        positives <- scores_interpolated[names(scores_interpolated) %in% names(outliers)]
+        
+        deltas <- positives - mean(background)
+        
+        ##################
+        ##################
       }
     
       if (sample_permutation == 'within_pmhc'){
