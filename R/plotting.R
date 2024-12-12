@@ -206,7 +206,219 @@ pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10, slot = 'counts
 #' @importFrom ComplexHeatmap Heatmap
 #' @importFrom circlize colorRamp2
 #' @export
-pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_order=NULL, split_cols=FALSE,
+#' 
+pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_order=NULL, split_cols=FALSE, highlight_pmhc.tcr=F,
+                         hm_breaks = NULL, hm_palette=c("blue", "white", "red"), pmhc_palette=NULL, pmhc_order=NULL,
+                         condpalette=NULL, highlight_column="pMHC_classification", stop_large_highlighting=T, show_heatmap_legend=T, 
+                         rowm.fonts=8, column_title_fonts = 10, column_title_rot = 45, use_original_order=T, 
+                         clean_mat=F, add_tcr_cluster=F, show_row_names=T, pmhc_subset=NULL, custom_annotations=c(), 
+                         skip_bugged_frames=F, show_legend_ann=c(F, T, T), bugged_width=.6, max_cols=16000, 
+                         verbose=T, ...) {
+  
+  library(randomcoloR)
+  library(circlize)
+  library(ComplexHeatmap)
+  
+  if(length(clones) == 0) {
+    stop("list of clonotypes in `clone` argument is empty")
+  }
+  missing_cols <- setdiff(custom_annotations, colnames(object@meta.data))
+  if(length(missing_cols) > 0){
+    stop(paste("Missing columns in object's metadata:", paste(missing_cols, collapse=", ")))
+  }
+  
+  if (!highlight_column %in% colnames(object@meta.data)) {
+    object[[highlight_column]] <- NA
+  }
+  
+  ann_columns <- c("clone_id", highlight_column, custom_annotations)
+  ann_subset <- object@meta.data %>%
+    dplyr::select(all_of(ann_columns)) %>%
+    filter(row.names(.) %in% Cells(object)[object$clone_id %in% clones]) %>%
+    arrange(clone_id)
+  
+  ann_subset$clone_id <- factor(ann_subset$clone_id, levels=unique(clones[clones %in% ann_subset$clone_id]))
+  
+  pat_pmhc <- object@misc$pmhc %>%
+    filter(!is.na(Sequence)) %>%
+    { if(!is.null(patient)) filter(., Patient == patient) else . } %>%
+    pull(Barcode)
+  
+  pat_pmhc <- pat_pmhc[pat_pmhc %in% rownames(object@assays$pMHC@counts)]
+  
+  pmhc_subset_ <- GetAssayData(object, layer = slot, assay = 'pMHC')
+  pmhc_subset_ <- pmhc_subset_[,Cells(object)[object$clone_id %in% clones]][pat_pmhc,]
+  
+  pmhc_subset_ann <- object@misc$pmhc %>%
+    filter(Barcode %in% row.names(pmhc_subset_)) %>%
+    { if(!is.null(patient)) filter(., Patient == patient) else . } %>%
+    as.data.frame() %>%
+    column_to_rownames('Barcode')
+  
+  rownames(pmhc_subset_) <- pmhc_subset_ann[rownames(pmhc_subset_),]$pmhc
+  
+  if (!is.null(pmhc_subset)){
+    pmhc_subset_ <- pmhc_subset_[rownames(pmhc_subset_) %in% pmhc_subset,] 
+  }
+  
+  ncl <- ann_subset$clone_id %>% unique() %>% length()
+  clpalette <- get_random_grid_colors(ncl, seed=3)
+  names(clpalette) <- ann_subset$clone_id %>% unique()
+  
+  if (is.null(pmhc_palette)){
+    palette_list <- list(clone_id = clpalette,
+                         condition = condpalette)
+  } else{
+    palette_list <- list(clone_id = clpalette,
+                         condition = condpalette,
+                         pmhc = pmhc_palette)
+  }
+  
+  if (!use_original_order){
+    ann_subset$clone_id <- factor(ann_subset$clone_id, 
+                                  levels=as.character(ann_subset$clone_id[order(ann_subset$epitope_type, ann_subset[[highlight_column]])]) %>% unique())
+    ann_subset <- ann_subset[order(ann_subset$epitope_type, ann_subset$clone_id, ann_subset$condition),]
+  } 
+  
+  pmhc_mat <- as.matrix(pmhc_subset_[, rownames(ann_subset)])
+  
+  if (clean_mat){
+    positive_bc <- ann_subset[[highlight_column]][ann_subset[[highlight_column]] != 'Negative']
+    positive_bc <- positive_bc %>% unique() %>% 
+      strsplit(., ":", fixed = TRUE) %>% unlist() %>% unique()
+    pmhc_mat = pmhc_mat[positive_bc,]
+  }
+  
+  if (is.null(hm_breaks)){
+    if (slot == 'scale.data'){
+      hm_breaks <- c(-5, 0, 5)
+    } else {
+      hm_breaks <- c(0, 4, 10)
+    }
+  }
+  
+  col_fun = colorRamp2(hm_breaks, hm_palette)
+  
+  if (ncol(pmhc_subset_) > max_cols) {
+    set.seed(123) 
+    sampled_cols <- sample(colnames(pmhc_subset_), max_cols)
+    pmhc_subset_ <- pmhc_subset_[, sampled_cols]
+    ann_subset <- ann_subset[sampled_cols,]
+    message("Number of columns exceeds threshold. Data has been randomly sampled to ", max_cols, " columns.")
+  }
+  
+  if (is.null(clones_order)){
+    cells_order <- ann_subset %>% 
+      arrange(.data[[highlight_column]], clone_id) %>%
+      rownames_to_column('cell_id') %>%
+      pull('cell_id')
+  } else {
+    cells_order <- ann_subset %>%
+      mutate(clone_order_factor = factor(clone_id, levels = clones_order)) %>%
+      arrange(clone_order_factor) %>%
+      dplyr::select(-clone_order_factor) %>% 
+      rownames_to_column('cell_id') %>%
+      pull(cell_id)
+  }
+  
+  ann_subset_ordered <- ann_subset[cells_order,]
+  pmhc_mat_ordered <- pmhc_mat[,cells_order]
+  
+  if (!is.null(pmhc_order)){
+    pmhc_mat_ordered <- pmhc_mat_ordered[pmhc_order,]
+  }
+  
+  custom_ann_list <- setNames(lapply(custom_annotations, function(cn) ann_subset[cells_order,][[cn]]), custom_annotations)
+  
+  ann_list <- list(
+    clone_id = ann_subset[cells_order,]$clone_id, 
+    pmhc = gsub(':', '\n', ann_subset[cells_order,][[highlight_column]])
+  )
+  ann_list <- c(ann_list, custom_ann_list)
+  
+  hm22ann <- do.call(HeatmapAnnotation, c(ann_list, list(
+    col = palette_list, show_legend = show_legend_ann,
+    which = 'col',
+    annotation_width = unit(c(1, 4), 'cm'),
+    gap = unit(1, 'mm')
+  )))
+  
+  if (split_cols){
+    split_cols <- ann_subset[cells_order,]$clone_id
+  } else {
+    split_cols <- NULL
+  }
+  
+  pmhc_subset_hmap <- Heatmap(
+    pmhc_mat_ordered, name = "pmhc_subset_hmap", 
+    show_heatmap_legend = show_heatmap_legend,
+    show_row_names = show_row_names, show_column_names = FALSE,
+    col = col_fun, column_split = split_cols,
+    cluster_rows = F, cluster_columns = F,
+    row_names_gp = grid::gpar(fontsize = rowm.fonts),  
+    column_title_gp = gpar(fontsize = column_title_fonts), 
+    column_title_rot = column_title_rot,
+    top_annotation=hm22ann)
+  
+  if (!highlight_pmhc.tcr){
+    return(pmhc_subset_hmap)
+  } else {
+    if (length(clones) > 300 & stop_large_highlighting){
+      stop('highlighting more than 300 clones specificity usually crushes the session, \n
+           if you want to continue, set stop_large_highlighting=F')
+    }
+    if (!is.null(split_cols)){
+      stop('Highlighting specificities in the clone split heatmap is not supported')
+    }
+    draw(pmhc_subset_hmap)
+    tcr_pmhc <- ann_subset_ordered %>%
+      dplyr::select(clone_id, !!sym(highlight_column)) %>%
+      filter(!is.na(.data[[highlight_column]]), .data[[highlight_column]] != 'Negative') %>%
+      unique() %>%
+      separate_rows(!!sym(highlight_column), sep=':')
+    
+    n_iter <- nrow(tcr_pmhc)
+    if (verbose){
+      pb <- txtProgressBar(min = 0, max = n_iter, style = 3, width = 50, char = "+") 
+    }  
+    
+    for (i in 1:n_iter){
+      cell_ids_i <- ann_subset_ordered$clone_id == tcr_pmhc[i,]$clone_id
+      cell_ids_i[is.na(cell_ids_i)] <- FALSE
+      cell_ids_i <- match(rownames(ann_subset_ordered)[cell_ids_i], colnames(pmhc_mat_ordered))
+      
+      pmhc_ids_i <- which(rownames(pmhc_mat_ordered) == tcr_pmhc[i,][[highlight_column]])
+      pmhc_ids_i <- rep(pmhc_ids_i, length(cell_ids_i))
+      
+      decorate_heatmap_body("pmhc_subset_hmap", {
+        for (row in pmhc_ids_i) {
+          cols_in_row <- cell_ids_i
+          min_col <- min(cols_in_row)
+          max_col <- max(cols_in_row)
+          
+          x = (min_col - 1) / ncol(pmhc_mat_ordered)
+          width = (max_col - min_col + 1) / ncol(pmhc_mat_ordered)
+          
+          y = 1 - (row - 0.5) / nrow(pmhc_mat_ordered)
+          height = 1 / nrow(pmhc_mat_ordered)
+          
+          if (skip_bugged_frames & width > bugged_width){
+            next
+          }
+          
+          grid.rect(x = x, y = y, width = width, height = height, just = c("left", "center"), 
+                    gp = gpar(col = "green", lwd = 2, fill = NA))
+        }
+      })
+      if (verbose) setTxtProgressBar(pb, i)
+    }
+    if (verbose) close(pb)
+  }
+}
+
+
+
+pmhc_heatmap_old <- function(object, clones, patient=NULL, slot='counts', clones_order=NULL, split_cols=FALSE,
                          hm_breaks = NULL, hm_palette=c("blue", "white", "red"), pmhc_palette=NULL, pmhc_order=NULL,
                          condpalette=NULL, highlight_pmhc.tcr=F, stop_large_highlighting=T, rowm.fonts=8,  
                          column_title_fonts = 10, column_title_rot = 45, use_original_order=T, clean_mat=F, 
@@ -428,6 +640,72 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
     }
     if (verbose) close(pb)
   }
+}
+
+plot_smoothing_changes <- function(scaled, smoothed, raw_counts = NULL, point_labels = NULL, pmhc, clone_id) {
+  if (is.null(raw_counts)) {
+    states <- c("Scaled", "Smoothed")
+    values <- list(scaled, smoothed)
+  } else {
+    states <- c("Raw", "Scaled", "Smoothed")
+    values <- list(raw_counts, scaled, smoothed)
+  }
+  
+  # Create a data frame for plotting
+  data <- data.frame(
+    state = rep(states, each = length(scaled)),
+    value = unlist(values),
+    id = rep(1:length(scaled), times = length(states))  # Identifier for each data point
+  )
+  
+  # Optional: Add point labels if provided
+  if (!is.null(point_labels)) {
+    data$label <- rep(point_labels, times = length(states))
+  }
+  
+  # Aggregate data to calculate dot size based on overlap
+  data_agg <- data %>%
+    group_by(state, value) %>%
+    summarise(
+      count = n(),          # Count of overlapping points
+      ids = list(id),       # List of IDs for color consistency
+      .groups = "drop"
+    )
+  
+  # Expand aggregated data to match original IDs for consistent coloring
+  data_expanded <- data_agg %>%
+    unnest_longer(ids) %>%
+    rename(id = ids)
+  
+  # Plot the slope chart
+  p <- ggplot(data, aes(x = state, y = value, group = id, color = as.factor(id))) +
+    geom_line(show.legend = FALSE) +  # Lines between points
+    geom_point(data = data_expanded, aes(size = count), show.legend = FALSE) +  # Points sized by count
+    labs(x = "State", y = "Value", title = "Changes Across States") +
+    theme_minimal() +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    ggtitle(sprintf('Normalisation of pMHC UMI counts\n for %s\n in clone %s', pmhc, clone_id))
+  
+  
+  if (!is.null(point_labels)) {
+    p <- p + geom_text(data = subset(data, state == "Smoothed"), 
+                       aes(label = label, hjust = -0.1), size = 3)
+  }
+  
+  print(p)
+}
+
+plot_smoothing <- function(object, clone_id, pmhc){
+  clone_cells <- rownames(object@meta.data[smoothable_cells,])[which(clone_assignments == clone_id)]
+  
+  barcode <- object@misc$pmhc$Barcode[object@misc$pmhc$pmhc == pmhc]
+  
+  counts <- GetAssayData(object, assay = 'pMHC', layer = 'counts')[barcode,][clone_cells]
+  scaled <- GetAssayData(object, assay = 'pMHC', layer = 'data')[barcode,][clone_cells]
+  smoothed <- GetAssayData(object, assay = 'pMHC', layer = 'scale.data')[barcode,][clone_cells]
+  
+  plot_smoothing_changes(raw_counts = counts, scaled = scaled, 
+                         smoothed = smoothed, pmhc=pmhc, clone_id=clone_id)
 }
 
 

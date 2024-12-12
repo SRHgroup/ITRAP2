@@ -2,27 +2,24 @@
 % Please edit documentation in R/scale_and_smooth.R
 \name{assign_pmhc}
 \alias{assign_pmhc}
-\title{Perform pMHC assigment /each big clone}
+\title{Perform pMHC Assignment for Each Big Clone}
 \usage{
 assign_pmhc(
   object,
   slot = "scale.data",
   assay = "pMHC",
-  assignment = "delta_gap",
-  params = "iteratively",
+  assignment = "rosner",
+  params = "remove_topx",
   remove_for_params = 3,
   assign_small_clones = F,
-  trim_outliers_for_zassignment = NULL,
-  assigment_z_score_threshold = 2,
   cl_size_thresh = 3,
   entropy_thresh = 1,
   kmax = 10,
-  rosner_alpha = 0.05,
+  rosner_alpha = 0.01,
   extreme_alpha = 0.05,
   delta_threshold = 1,
   n_tests = 10,
   p_alpha = 0.1,
-  sample_permutation = "within_pmhc",
   predefined_extreme_params = NULL,
   filter_by_zscore = FALSE,
   filter_by_zscore_big_clones = FALSE,
@@ -40,41 +37,71 @@ assign_pmhc(
 )
 }
 \arguments{
-\item{object}{(\code{Seurat}) A Seurat object that must be of the above described
-structure}
+\item{object}{(\code{Seurat}) A Seurat object with the required structure described above.}
 
-\item{assay}{(\code{character}) name of the slot with pMHC counts, default "pMHC"}
+\item{slot}{(\code{character}) The data slot to use within the specified assay, default is "scale.data".}
 
-\item{assign_small_clones}{(\code{logical}) whether you want to assign pMHC to small
-clones (<cl_size_thresh), smaller clones result in less confidence, so if
-you aim for high precision you may want to skip them, this will also make the
-assignment run way faster}
+\item{assay}{(\code{character}) The name of the assay with pMHC counts, default is "pMHC".}
 
-\item{cl_size_thresh}{(\code{numeric}) from what clone size a clone will be smoothed}
+\item{assignment}{(\code{character}) The method for identifying outliers, can be one of
+"z-score", "delta_gap", "rosner", or "extreme_distribution".}
 
-\item{entropy_thresh}{(\code{numeric}) pMHCs with higher than this threshold will be
-removed from TCR-pMHC pairing for clones smaller than cl_size_thresh. Meant for
-extremely noisy pMHCs.}
+\item{assign_small_clones}{(\code{logical}) Whether to assign pMHCs to small clones (smaller than \code{cl_size_thresh}),
+which may reduce precision. Defaults to \code{FALSE}.}
 
-\item{delta_threshold}{what should be a threshold that differentiates
-background from specificity signal, recommended from 0.7 to 1}
+\item{cl_size_thresh}{(\code{numeric}) Minimum clone size for using smoothed z-score values, default is 3.}
 
-\item{sample_permutation}{whether to downsample values within the same pMHC,
-('within_pmhc') or across any random pMHC ('random')}
+\item{entropy_thresh}{(\code{numeric}) Threshold above which pMHCs are excluded from TCR-pMHC pairing for
+clones smaller than \code{cl_size_thresh} due to noise.}
 
-\item{verbose}{whether to show a progress bar}
+\item{kmax}{(\code{numeric}) The maximum number of potential outliers, used in \code{rosner} assignment.}
+
+\item{rosner_alpha}{(\code{numeric}) Significance level for Rosner's test, used in \code{rosner} assignment.}
+
+\item{extreme_alpha}{(\code{numeric}) Significance level for \code{extreme_distribution} assignment.}
+
+\item{delta_threshold}{(\code{numeric}) Threshold to separate background from specificity signal,
+recommended values between 0.7 and 1. Used in delta_gap assigment.}
+
+\item{predefined_extreme_params}{(\code{list} or \code{NULL}) Predefined extreme distribution parameters for \code{extreme_distribution} assignment.}
+
+\item{filter_by_zscore}{(\code{logical}) Whether to filter small clones by z-score threshold,
+assuming that the absense of any extreme values would result in no specificities, thus saving
+computational time.}
+
+\item{filter_by_zscore_big_clones}{(\code{logical}) Whether to filter large clones by z-score threshold,
+#' assuming that the absense of any extreme values would result in no specificities, thus saving
+computational time.}
+
+\item{top_down}{(\code{logical}) If \code{TRUE}, uses a top-down approach in delta gap assignment, if \code{FALSE} then uses bottom-up approach,
+that leads to lessstrict assigments, default is \code{FALSE}.}
+
+\item{z_score_threshold}{(\code{numeric}) z-score threshold for filtering clones.}
+
+\item{calculate_pvalue}{(\code{logical}) Whether to calculate p-values for TCR-pMHC assignments.}
+
+\item{calculate_confidence_score}{(\code{logical}) Whether to calculate confidence scores for TCR-pMHC assignments.}
+
+\item{alpha, }{beta, gamma, delta (\code{numeric}) Parameters used in confidence score calculations.}
+
+\item{force}{(\code{logical}) If \code{TRUE}, forces the function to run even if preconditions are not met.}
+
+\item{verbose}{(\code{logical}) If \code{TRUE}, displays progress information.}
+
+\item{...}{Additional arguments passed to internal functions.}
 }
 \value{
-(\code{Seurat}) with the ScaleData slot with scaled pMHC counts smoothed
+(\code{Seurat}) The modified Seurat object, with TCR-pMHC classification and scores added to \code{meta.data}.
 }
 \description{
-Perform pMHC assigment each big clone, your Seurat object is expected to
-have a certain structure
-pMHC count matrix should be stored as separate assay called "pMHC"
-slot "misc" is expected to have an annotation for your pMHC barcodes with following
-columns: "Barcode" - barcode ID (same as rownames in pMHC matrix)
-"Sequence" - peptide sequence
-"HLA" - HLA allele
+This function performs pMHC assignment for each "big" clone in a Seurat object, with the option to
+include small clones as well. The Seurat object must contain a pMHC count matrix as a separate assay
+named "pMHC", and metadata in the "misc" slot should include columns for pMHC barcode annotation:
+\itemize{
+\item "Barcode": barcode ID (matching row names in the pMHC matrix)
+\item "Sequence": peptide sequence
+\item "HLA": HLA allele
+}
 }
 \examples{
 assign_pmhc(object)

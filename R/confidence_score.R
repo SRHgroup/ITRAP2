@@ -17,7 +17,7 @@
 #' calc_entropy(vec)
 #'
 #' @export
-calc_entropy <- function(vec, quantiles) {
+calc_entropy <- function(vec, quantiles, with_weights) {
   
   no0propo <- sum(vec!=0)/length(vec)
   if (no0propo < 0.1){

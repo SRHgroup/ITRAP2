@@ -11,12 +11,13 @@ pmhc_heatmap(
   slot = "counts",
   clones_order = NULL,
   split_cols = FALSE,
+  highlight_pmhc.tcr = F,
   hm_breaks = NULL,
   hm_palette = c("blue", "white", "red"),
   pmhc_palette = NULL,
   pmhc_order = NULL,
   condpalette = NULL,
-  highlight_pmhc.tcr = F,
+  highlight_column = "pMHC_classification",
   stop_large_highlighting = T,
   rowm.fonts = 8,
   column_title_fonts = 10,
@@ -47,6 +48,8 @@ pMHC and clone annotations.}
 
 \item{clones_order}{Optional; an order for the clones to be displayed in the heatmap.}
 
+\item{highlight_pmhc.tcr}{Optional; specific pMHC-TCR interactions to highlight in the heatmap.}
+
 \item{hm_breaks}{Numeric vector specifying the breakpoints for heatmap coloring.}
 
 \item{hm_palette}{A vector of colors corresponding to \code{hm_breaks} for heatmap coloring.}
@@ -54,8 +57,6 @@ pMHC and clone annotations.}
 \item{pmhc_palette}{A color palette for pMHCs, if differentiating by pMHC is desired.}
 
 \item{condpalette}{A color palette for conditioning variables, if applicable.}
-
-\item{highlight_pmhc.tcr}{Optional; specific pMHC-TCR interactions to highlight in the heatmap.}
 
 \item{rowm.fonts}{Font size for row names.}
 

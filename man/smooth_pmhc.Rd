@@ -12,7 +12,7 @@ smooth_pmhc(
   normalise = FALSE,
   span_val = 1,
   degree_val = 1,
-  family_val = "gaussian",
+  family_val = "symmetric",
   verbose = TRUE
 )
 }

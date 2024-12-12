@@ -1,7 +1,49 @@
 library(shades)
 library(EnvStats)
 
-
+#' Rosner's Test for Outliers
+#'
+#' Perform Rosner's generalized extreme Studentized deviate test for up to 
+#' \eqn{k} potential outliers in a dataset, assuming the data without any outliers come 
+#' from a normal (Gaussian) distribution. This is a modified version of a rosner
+#' test from EnvStats package. 
+#'
+#' @param x numeric vector of observations. Missing (\code{NA}), undefined (\code{NaN}), 
+#'   and infinite (\code{Inf}, \code{-Inf}) values are allowed but will be removed.  
+#'   There must be at least 10 non-missing, finite observations in \code{x}.
+#' @param k positive integer indicating the number of suspected outliers. The argument \code{k} 
+#'   must be between 1 and \eqn{n-2} where \eqn{n} denotes the number of non-missing, finite 
+#'   values in the argument \code{x}. The default value is \code{k=3}.
+#' @param alpha numeric scalar between 0 and 1 indicating the Type I error associated with the 
+#'   test of hypothesis. The default value is \code{alpha=0.05}.
+#' @param warn logical scalar indicating whether to issue a warning (\code{warn=TRUE}; the default) 
+#'   when the number of non-missing, finite values in \code{x} and the value of \code{k} are such 
+#'   that the assumed Type I error level might not be maintained.
+#' @param params string, indicating how to approach mean and sd estimation for the test
+#' `iteratively` would be a default setting, like it's implemented in EnvStats
+#'  where mean and as estimated each iteration, after removing the most extreme value
+#' `extreme_params` would be replacing a mean and sd with a analogous location and
+#'   scale parameters, after fitting an extreme distribution within a clone. Location and
+#'   scale are estimated once, without updating it every iteration.
+#' `remove_topx` would remove top x most extreme z-scores from the clone, leaving
+#'  every potential outliers out, sinse we don't expect more than 2-3 specificities
+#'  per clone.
+#' @param remove_for_params for running rosner test in remove_topx setting in `params`
+#' how much most extreme z-scores to remove, default is 3
+#' 
+#' @return A list with the results of the Rosner's test.
+#'
+#' @details This function performs Rosner's generalized extreme Studentized deviate test, which is 
+#'   suitable for identifying multiple outliers in a dataset assumed to follow a normal distribution.
+#'
+#' @examples
+#' \dontrun{
+#' # Example usage:
+#' data <- rnorm(100)
+#' rosnerTest(data, k = 3, alpha = 0.05)
+#' }
+#' 
+#' @export
 rosnerTest <- function(x, k = 3, alpha = 0.05, warn = TRUE, 
                         params = 'iteratively', remove_for_params = 3){
   data.name <- deparse(substitute(x))
@@ -77,10 +119,16 @@ rosnerTest <- function(x, k = 3, alpha = 0.05, warn = TRUE,
     }
   } else if (params == 'remove_topx'){
     
-    subs <- remove_for_params-1
+    if (length(x) <= remove_for_params+1){
+      mean.x <- mean(x)
+      sd.x <- sd(x)
+    } else {
+      subs <- remove_for_params-1
+      
+      mean.x <- mean(x[1:(length(x)-subs)]) 
+      sd.x <- sd(x[1:(length(x)-subs)])
+    }
     
-    mean.x <- mean(x[1:(length(x)-subs)]) 
-    sd.x <- sd(x[1:(length(x)-subs)])
     for (i in 1:k) {
     
       abs.z = abs(new.x - mean.x)/sd.x
@@ -114,10 +162,12 @@ rosnerTest <- function(x, k = 3, alpha = 0.05, warn = TRUE,
   num.outlier.vec <- 1:k
   lambda <- rosnerTestLambda(n = n, k = 1:k, alpha = alpha)
   outlier <- R > lambda
+  
   if (any(outlier)) {
     index <- max(num.outlier.vec[outlier], na.rm = TRUE)
     outlier[1:index] <- TRUE
   }
+  
   out.df <- data.frame(num.outlier.vec - 1, mean.vec, sd.vec, 
                        x.vec, obs.num.vec, R, lambda, outlier)
   names(out.df) <- c("i", "Mean.i", "SD.i", "Value", "Obs.Num", 
@@ -169,3 +219,4 @@ cbind.no.warn <- function (..., deparse.level = 1)
     on.exit(options(oldopts))
     base::cbind(..., deparse.level = deparse.level)
   }
+
