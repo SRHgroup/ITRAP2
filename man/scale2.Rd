@@ -5,6 +5,8 @@
 \title{Centers and scales a rows in numeric matrix}
 \usage{
 scale2(mat, sd_fun = sd)
+
+scale2(mat, sd_fun = sd)
 }
 \arguments{
 \item{mat}{A numeric matrix (\code{matrix}).}
@@ -14,12 +16,17 @@ have na.rm parameter to remove NA values}
 }
 \value{
 a mean ceantered and median scaled matrix (\code{matrix})
+
+a mean ceantered and median scaled matrix (\code{matrix})
 }
 \description{
 Centers and scales a rows in numeric matrix, you have an option to replace 0 sd
 with 0.001 not to cause a division by zero during the scaling
 }
 \examples{
+scale2(mat)
+scale2(mat, sd_fun=sd)
+
 scale2(mat)
 scale2(mat, sd_fun=sd)
 

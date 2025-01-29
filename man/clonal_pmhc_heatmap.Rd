@@ -4,7 +4,12 @@
 \alias{clonal_pmhc_heatmap}
 \title{Create a Clonal pMHC Heatmap}
 \usage{
-clonal_pmhc_heatmap(data_matrix)
+clonal_pmhc_heatmap(
+  data_matrix,
+  fontsize = 8,
+  heatmap_legend_side = "left",
+  hm_legent_direction = "vertical"
+)
 }
 \arguments{
 \item{data_matrix}{A numeric matrix representing the data to be visualized in the heatmap. The rows should represent

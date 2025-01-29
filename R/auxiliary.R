@@ -131,7 +131,7 @@ normalize_vector <- function(vec) {
 extract_pairs <- function(object, custom_columns = NULL){
   
   default_columns <- c("pMHC_classification", "pMHC_confidence", "pMHC_pvalues",
-                       "clone_id", "junction_beta", "junction_alpha", "clone_id",
+                       "clone_id", "junction_beta", "junction_alpha", "clone_id", 'clone_size',
                        "v_call_beta", "c_call_beta", "j_call_beta", "d_call_beta",
                        "v_call_alpha", "c_call_alpha", "j_call_alpha", "d_call_alpha")
   

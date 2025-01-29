@@ -7,6 +7,8 @@
 score_pmhc_noise(
   object,
   how = c("per_clone", "pseudobulk"),
+  probs = c(0.2, 0.4, 0.6, 0.8, 1),
+  with_weights = FALSE,
   downsample_rate = 0.2,
   verbose = T,
   slot = "counts"

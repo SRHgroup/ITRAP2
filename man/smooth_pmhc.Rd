@@ -15,6 +15,18 @@ smooth_pmhc(
   family_val = "symmetric",
   verbose = TRUE
 )
+
+smooth_pmhc(
+  object,
+  best_params = NULL,
+  assay = "pMHC",
+  cl_size_thresh = 3,
+  normalise = FALSE,
+  span_val = 1,
+  degree_val = 1,
+  family_val = "symmetric",
+  verbose = TRUE
+)
 }
 \arguments{
 \item{object}{(\code{Seurat}) A Seurat object that must be of the above described
@@ -39,13 +51,21 @@ smooth scaled by ScaleDataNoOutliers counts}
 }
 \value{
 (\code{Seurat}) with the ScaleData slot with scaled pMHC counts smoothed
+
+(\code{Seurat}) with the ScaleData slot with scaled pMHC counts smoothed
 }
 \description{
 Perform the smoothing of scaled pMHC counts for every big clone in your
 Seurat object. Your Seurat object is expected "clone_id" column in your meta.data
 with clonotype assigments.
+
+Perform the smoothing of scaled pMHC counts for every big clone in your
+Seurat object. Your Seurat object is expected "clone_id" column in your meta.data
+with clonotype assigments.
 }
 \examples{
+smooth_pmhc(object)
+
 smooth_pmhc(object)
 
 }

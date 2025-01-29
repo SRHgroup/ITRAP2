@@ -5,6 +5,8 @@
 \title{Perform the scaling with no outliers on your Seurat object}
 \usage{
 ScaleDataNoOutliers(object, outlier = 3, return_params = FALSE, verbose = TRUE)
+
+ScaleDataNoOutliers(object, outlier = 3, return_params = FALSE, verbose = TRUE)
 }
 \arguments{
 \item{object}{(\code{Seurat}) A Seurat object that must be of the above described
@@ -20,6 +22,9 @@ means along with the object}
 \value{
 (\code{Seurat}) with the ScaleData slot in pMHC assay filled with scaled
 pMGC matrix
+
+(\code{Seurat}) with the ScaleData slot in pMHC assay filled with scaled
+pMGC matrix
 }
 \description{
 Perform the scaling with no outliers on your Seurat object. Your Seurat object
@@ -29,8 +34,18 @@ slot "misc" is expected to have an annotation for your pMHC barcodes with follow
 columns: "Barcode" - barcode ID (same as rownames in pMHC matrix)
 "Sequence" - peptide sequence
 "HLA" - HLA allele
+
+Perform the scaling with no outliers on your Seurat object. Your Seurat object
+is expected to have a certain structure.
+pMHC count matrix should be stored as separate assay called "pMHC"
+slot "misc" is expected to have an annotation for your pMHC barcodes with following
+columns: "Barcode" - barcode ID (same as rownames in pMHC matrix)
+"Sequence" - peptide sequence
+"HLA" - HLA allele
 }
 \examples{
+ScaleDataNoOutliers(object)
+
 ScaleDataNoOutliers(object)
 
 }

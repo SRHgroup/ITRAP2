@@ -22,7 +22,9 @@
 #' @importFrom grid gpar unit
 #' @importFrom cowplot ggdraw draw_plot
 #' @export
-clonal_pmhc_heatmap <- function(data_matrix) {
+clonal_pmhc_heatmap <- function(data_matrix, fontsize=8, 
+                                heatmap_legend_side = "left", 
+                                hm_legent_direction = 'vertical') {
   
   library(ComplexHeatmap)
   library(RColorBrewer)
@@ -39,20 +41,22 @@ clonal_pmhc_heatmap <- function(data_matrix) {
     show_row_names = TRUE,
     row_names_side = 'left',
     show_column_names = FALSE, 
-    row_names_gp = gpar(fontsize = 10), 
+    row_names_gp = gpar(fontsize = fontsize), 
     column_names_gp = gpar(fontsize = 10), 
     rect_gp = gpar(col = "grey", lwd = 0.2), 
     heatmap_legend_param = list(
       title = "UMI counts",
       legend_width = unit(2, "cm"), 
       legend_height = unit(4, "cm"), 
-      color_bar = "continuous", position='left',
+      color_bar = "continuous", 
+      position=heatmap_legend_side,
+      direction=hm_legent_direction,
       legend_main_gp = gpar(fontsize = 10),
       legend_gp = gpar(fontsize = 8) 
     )
   )
   
-  heatmap_grob <- grid.grabExpr(draw(heatmap_plot, heatmap_legend_side = "left"))
+  heatmap_grob <- grid.grabExpr(draw(heatmap_plot, heatmap_legend_side = heatmap_legend_side))
   heatmap_gg <- cowplot::ggdraw() + cowplot::draw_plot(heatmap_grob)
   
   return(heatmap_gg)
@@ -89,6 +93,8 @@ clonal_pmhc_heatmap <- function(data_matrix) {
 #' @export
 pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10, slot = 'counts', 
                                 xlimits=NULL, return_pmhcs=F, display_pvalues=F, 
+                                conc_fontsize=8, dot_fontsize=8, hm_fontsize=8, 
+                                extra_title=NULL, heatmap_legend_side='left', hm_legent_direction = "vertical",  
                                 ...){
   
   clone_obj <- subset(object, clone_id == clone)
@@ -113,7 +119,10 @@ pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10, slot = 'counts
   rown <- paste('npos=', rown, sep = '')
   rownames(pmhc_matrix2) <- rown 
   
-  heatmap_gg <- clonal_pmhc_heatmap(pmhc_matrix2)
+  heatmap_gg <- clonal_pmhc_heatmap(pmhc_matrix2, 
+                                    fontsize = hm_fontsize,
+                                    heatmap_legend_side=heatmap_legend_side,
+                                    hm_legent_direction = hm_legent_direction)
   
   pmhc_matrix_long <- as.data.frame(pmhc_matrix)  %>% 
     rownames_to_column(var = "Feature") %>% 
@@ -126,6 +135,7 @@ pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10, slot = 'counts
     geom_jitter() +
     geom_hline(yintercept = y_vals, linetype = "dashed", colour = "grey", size = 0.5) +
     theme_classic() +
+    theme(axis.text.y = element_text(size = dot_fontsize)) +
     labs(x = "UMI counts", y = "Feature", color = "Feature") +
     NoLegend()
   
@@ -145,7 +155,8 @@ pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10, slot = 'counts
     geom_hline(yintercept = y_vals, linetype = "dashed", colour = "grey", size = 0.5) +
     theme_classic() +
     labs(x = "concordance", y = "") +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          axis.text.y = element_text(size = conc_fontsize))
   
   combined_plot <- cowplot::plot_grid(
     heatmap_gg, dists+ylab(''), conc_bp,
@@ -153,7 +164,11 @@ pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10, slot = 'counts
     ncol = 3,
     rel_widths = c(3, 6, 3.5), axis = 'l') 
   
-  title <- cowplot::ggdraw() + cowplot::draw_label(paste0('clonotype = ', clone, '; #gems=', ncol(pmhc_matrix)), fontface='bold')
+  title_text <- paste0('clonotype = ', clone, '; #gems=', ncol(pmhc_matrix))
+  if (!is.null(extra_title)){
+    title_text <- paste0(title_text, ', ', extra_title)
+  }
+  title <- cowplot::ggdraw() + cowplot::draw_label(title_text, fontface='bold')
   
   if (return_pmhcs){
     return(list(
@@ -255,7 +270,8 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
     as.data.frame() %>%
     column_to_rownames('Barcode')
   
-  rownames(pmhc_subset_) <- pmhc_subset_ann[rownames(pmhc_subset_),]$pmhc
+  bc_to_pmhc <- setNames(object@misc$pmhc$pmhc, object@misc$pmhc$Barcode)
+  rownames(pmhc_subset_) <- recode(rownames(pmhc_subset_), !!!bc_to_pmhc)
   
   if (!is.null(pmhc_subset)){
     pmhc_subset_ <- pmhc_subset_[rownames(pmhc_subset_) %in% pmhc_subset,] 
@@ -642,7 +658,8 @@ pmhc_heatmap_old <- function(object, clones, patient=NULL, slot='counts', clones
   }
 }
 
-plot_smoothing_changes <- function(scaled, smoothed, raw_counts = NULL, point_labels = NULL, pmhc, clone_id) {
+plot_smoothing_changes <- function(scaled, smoothed, raw_counts = NULL, 
+                                   point_labels = NULL, pmhc, clone_id, title=NULL) {
   if (is.null(raw_counts)) {
     states <- c("Scaled", "Smoothed")
     values <- list(scaled, smoothed)
@@ -655,7 +672,7 @@ plot_smoothing_changes <- function(scaled, smoothed, raw_counts = NULL, point_la
   data <- data.frame(
     state = rep(states, each = length(scaled)),
     value = unlist(values),
-    id = rep(1:length(scaled), times = length(states))  # Identifier for each data point
+    ids = rep(1:length(scaled), times = length(states))  # Identifier for each data point
   )
   
   # Optional: Add point labels if provided
@@ -668,23 +685,25 @@ plot_smoothing_changes <- function(scaled, smoothed, raw_counts = NULL, point_la
     group_by(state, value) %>%
     summarise(
       count = n(),          # Count of overlapping points
-      ids = list(id),       # List of IDs for color consistency
+      ids = list(ids),       # List of IDs for color consistency
       .groups = "drop"
     )
   
   # Expand aggregated data to match original IDs for consistent coloring
   data_expanded <- data_agg %>%
-    unnest_longer(ids) %>%
-    rename(id = ids)
+    unnest_longer(ids) 
   
+  if (is.null(title)){
+    title <- sprintf('Normalisation of pMHC UMI counts\n for %s\n in clone %s', pmhc, clone_id)
+  } 
   # Plot the slope chart
-  p <- ggplot(data, aes(x = state, y = value, group = id, color = as.factor(id))) +
+  p <- ggplot(data, aes(x = state, y = value, group = ids, color = as.factor(ids))) +
     geom_line(show.legend = FALSE) +  # Lines between points
     geom_point(data = data_expanded, aes(size = count), show.legend = FALSE) +  # Points sized by count
     labs(x = "State", y = "Value", title = "Changes Across States") +
     theme_minimal() +
     theme(plot.title = element_text(hjust = 0.5)) +
-    ggtitle(sprintf('Normalisation of pMHC UMI counts\n for %s\n in clone %s', pmhc, clone_id))
+    ggtitle(title)
   
   
   if (!is.null(point_labels)) {
@@ -695,7 +714,7 @@ plot_smoothing_changes <- function(scaled, smoothed, raw_counts = NULL, point_la
   print(p)
 }
 
-plot_smoothing <- function(object, clone_id, pmhc){
+plot_smoothing <- function(object, clone_id, pmhc, ...){
   clone_cells <- rownames(object@meta.data[smoothable_cells,])[which(clone_assignments == clone_id)]
   
   barcode <- object@misc$pmhc$Barcode[object@misc$pmhc$pmhc == pmhc]
@@ -705,7 +724,7 @@ plot_smoothing <- function(object, clone_id, pmhc){
   smoothed <- GetAssayData(object, assay = 'pMHC', layer = 'scale.data')[barcode,][clone_cells]
   
   plot_smoothing_changes(raw_counts = counts, scaled = scaled, 
-                         smoothed = smoothed, pmhc=pmhc, clone_id=clone_id)
+                         smoothed = smoothed, pmhc=pmhc, clone_id=clone_id, ...)
 }
 
 
@@ -745,5 +764,67 @@ get_random_grid_colors <- function(ncolor,seed = 100) {
   }
   index <- sample(seq(1,nbox),ncolor)
   RGB[index]
+}
+
+
+NoXaxis <- function() {
+  theme(
+    axis.title.x = element_blank(),   
+    axis.text.x = element_blank(),    
+    axis.ticks.x = element_blank()    
+  )
+}
+
+
+plot_vdj_segment_frequency <- function(data, chain = "beta", segment = "v_call", 
+                                       x_var = "pMHC_classification", threshold = 0.05,
+                                       metric = "tcr_fraction") {
+  
+  segment_col <- paste0(segment, "_", chain)
+  
+  if (!(segment_col %in% colnames(data))) {
+    stop(paste("Column", segment_col, "not found in the dataset! Check 'chain' and 'segment' inputs."))
+  }
+  if (!(x_var %in% colnames(data))) {
+    stop(paste("Column", x_var, "not found in the dataset! Check 'x_var' input."))
+  }
+  if (!(metric %in% c("tcr_fraction", "cell_fraction"))) {
+    stop("Invalid 'metric' value. Use 'tcr_fraction' for TCR fraction or 'cell_fraction' for cell fraction.")
+  }
+  
+  if (metric == "tcr_fraction") {
+    plot_data <- data %>%
+      group_by(!!sym(x_var), !!sym(segment_col)) %>%
+      summarise(count = n(), .groups = "drop") %>%
+      group_by(!!sym(x_var)) %>%
+      mutate(fraction = count / sum(count)) %>%
+      mutate(segment_label = ifelse(fraction < threshold, paste0("Less than ", threshold * 100, "%"), !!sym(segment_col))) %>%
+      group_by(!!sym(x_var), segment_label) %>%
+      summarise(fraction = sum(fraction), .groups = "drop")
+  } else if (metric == "cell_fraction") {
+    plot_data <- data %>%
+      group_by(!!sym(x_var), !!sym(segment_col)) %>%
+      summarise(cell_sum = sum(clone_size, na.rm = TRUE), .groups = "drop") %>%
+      group_by(!!sym(x_var)) %>%
+      mutate(fraction = cell_sum / sum(cell_sum)) %>%
+      mutate(segment_label = ifelse(fraction < threshold, paste0("Less than ", threshold * 100, "%"), !!sym(segment_col))) %>%
+      group_by(!!sym(x_var), segment_label) %>%
+      summarise(fraction = sum(fraction), .groups = "drop")
+  }
+  
+  ggplot(plot_data, aes_string(x = x_var, y = "fraction", fill = "segment_label")) +
+    geom_bar(stat = "identity", position = "stack") +
+    scale_fill_manual(
+      values = c("grey", setNames(rainbow(length(unique(plot_data$segment_label)) - 1), 
+                                  unique(plot_data$segment_label)[unique(plot_data$segment_label) != paste0("Less than ", threshold * 100, "%")]))
+    ) +
+    labs(
+      title = paste0("Fraction of ", toupper(segment %>% gsub('_call', '', .)), " Segment (", toupper(chain), " Chain) by ", x_var),
+      x = x_var,
+      y = ifelse(metric == "tcr_fraction", "Fraction of TCRs", "Fraction of Cells"),
+      fill = paste0(toupper(segment), " Segment")
+    ) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
 }
 

@@ -17,7 +17,7 @@
 #' calc_entropy(vec)
 #'
 #' @export
-calc_entropy <- function(vec, quantiles, with_weights) {
+calc_entropy <- function(vec, quantiles, with_weights=FALSE) {
   
   no0propo <- sum(vec!=0)/length(vec)
   if (no0propo < 0.1){
@@ -36,18 +36,30 @@ calc_entropy <- function(vec, quantiles, with_weights) {
       
       bins <- cut(vec, breaks = quantiles, include.lowest = TRUE, labels = FALSE)
       prob_dist <- table(bins) / sum(!is.na(bins))
-      entropy <- -sum(prob_dist * log2(prob_dist + 1e-9)) # Adding epsilon to avoid log(0)
+      
+      if (with_weights) {
+        num_bins <- length(prob_dist)   # Number of quantile intervals
+        weights <- seq(1, 2, length.out = num_bins)  # Decreasing weights
+        #weights <- weights / sum(weights)  # Normalize weights to sum to 1
+        
+        # Apply weights to the probability distribution
+        weighted_prob_dist <- prob_dist * weights[as.numeric(names(prob_dist))]
+      } else {
+        weighted_prob_dist <- prob_dist
+      }
+      
+      # Calculate weighted entropy
+      entropy <- -sum(weighted_prob_dist * log2(prob_dist + 1e-9))  # Adding epsilon to avoid log(0)
       return(entropy)
     }, error = function(e) {
       message("\nError during entropy calculation: ", e$message)
-      return(NA) 
+      return(NA)
     }, warning = function(w) {
       message("\nWarning during entropy calculation: ", w$message)
-      return(NA) 
+      return(NA)
     })
   }
 }
-
 #' Calculate Noise Scores for pMHC Data
 #'
 #' This function calculates noise scores for peptide-MHC (pMHC) data within a Seurat object. 
@@ -76,10 +88,22 @@ calc_entropy <- function(vec, quantiles, with_weights) {
 #'
 #' @export
 score_pmhc_noise <- function(object, how=c('per_clone', 'pseudobulk'), 
+                             probs = c(.2, .4, .6, .8, 1), with_weights=FALSE,
                              downsample_rate=.20, verbose=T, slot='counts'){
   
   if (downsample_rate < 0 | downsample_rate > 1){
     stop('downsample rate must be between 0 and 1')
+  }
+  
+  if (!"clone_size" %in% names(object@meta.data)) {
+    object@meta.data <- object@meta.data %>%
+      tibble::rownames_to_column('row_id') %>% 
+      group_by(clone_id) %>%
+      mutate(clone_size = n()) %>%
+      ungroup() %>% 
+      tibble::column_to_rownames('row_id')
+    
+    object$clone_size[is.na(object$clone_id)] <- NA
   }
   
   pmhc_names <- rownames(object@assays$pMHC)
@@ -100,7 +124,7 @@ score_pmhc_noise <- function(object, how=c('per_clone', 'pseudobulk'),
   entropies <- list()
   
   pmhc_quantiles <- apply(GetAssayData(object, assay = 'pMHC', layer = slot),
-                          1, function(vec) quantile(vec, probs = c(.2, .4, .6, .8, 1), 
+                          1, function(vec) quantile(vec, probs = probs, 
                                                     na.rm = TRUE, names = FALSE), 
                           simplify = F)
   
@@ -119,7 +143,8 @@ score_pmhc_noise <- function(object, how=c('per_clone', 'pseudobulk'),
       data_matrix <- GetAssayData(subset(object, clone_id==cl), layer=slot, assay='pMHC')
       rows_list <- split(data_matrix[pmhc_names,], pmhc_names)
       
-      entropies <- mapply(calc_entropy, rows_list[pmhc_names], pmhc_quantiles[pmhc_names])
+      entropies <- mapply(calc_entropy, rows_list[pmhc_names], pmhc_quantiles[pmhc_names],
+                          MoreArgs = list(with_weights = with_weights))
       
       if (verbose) {
         index <- index + 1
@@ -269,11 +294,11 @@ calculate_confidence <- function(entropy, concordances, clone_size, deltas,
 #' allowing for adjustable cutoffs in subsequent analyses.
 #'
 #' @param object A Seurat object containing pMHC classification and confidence data within its `meta.data`.
-#' @param confidence_cutoff A numeric value specifying the confidence score cutoff 
-#'        below which pMHC classifications will be considered unreliable and thus filtered out.
+#' @param condition string, what condition to apply to filter pMHC-TCR assigments
+#' @param condition_scope string, only apply filter to clones that meat a specific condition
 #'
 #' @return The input Seurat object with `pMHC_classification` and `pMHC_confidence` 
-#'         in its `meta.data` filtered based on the specified `confidence_cutoff`. 
+#'         in its `meta.data` filtered based on the specified `condition` and `condition_score`. 
 #'         The function also updates `object@commands` to indicate that pMHC filtering has been performed.
 #'
 #' @details
@@ -283,84 +308,89 @@ calculate_confidence <- function(entropy, concordances, clone_size, deltas,
 #' Post-filtering, cells marked as 'Negative' are preserved as such, irrespective of the confidence score.
 #'
 #' @examples
-#' # Assuming 'seurat_obj' is a Seurat object with pMHC classification and confidence information
-#' seurat_obj <- filter_pmhc(seurat_obj, confidence_cutoff = 0.5)
+#' filter_pmhc(object, condition = "pvalues < 0.05")
+#' filter_pmhc(object, condition = "pvalues < 0.05", condition_scope = "clone_size == 1")
 #'
 #' @export
 #object <- subset(obj, clone_id %in% weird)
-filter_pmhc <- function(object, confidence_cutoff=1.5, pvalue_cutoff=0.2,
-                        p_value_or_confidence=F, 
-                        apply_confidence_filter=T, 
-                        apply_pvalue_filter=T) { #### BUGGED PVAL FILTER IF CUTOFF IS HIGH
+filter_pmhc <- function(object, condition = NULL, condition_scope = NULL) {
+  library(dplyr)
+  library(tidyr)
+  library(rlang)
   
+  # Save the unfitted data for restoring
   if (is.null(object@commands$pmhc_filter)) {
-    object@meta.data$pMHC_classification_unf <- object@meta.data$pMHC_classification
-    object@meta.data$pMHC_confidence_unf <- object@meta.data$pMHC_confidence
-    object@meta.data$pMHC_pvalues_unf <- object@meta.data$pMHC_pvalues
+    object@meta.data <- object@meta.data %>%
+      mutate(
+        pMHC_classification_unf = pMHC_classification,
+        pMHC_confidence_unf = pMHC_confidence,
+        pMHC_pvalues_unf = pMHC_pvalues
+      )
   } else {
-    object@meta.data$pMHC_classification <- object@meta.data$pMHC_classification_unf
-    object@meta.data$pMHC_confidence <- object@meta.data$pMHC_confidence_unf
-    object@meta.data$pMHC_pvalues <- object@meta.data$pMHC_pvalues_unf 
+    object@meta.data <- object@meta.data %>%
+      mutate(
+        pMHC_classification = pMHC_classification_unf,
+        pMHC_confidence = pMHC_confidence_unf,
+        pMHC_pvalues = pMHC_pvalues_unf
+      )
   }
   
-  meta <- object@meta.data 
- 
-  classifications_list <- strsplit(as.character(meta$pMHC_classification), ":")
-  confidence_list <- strsplit(as.character(meta$pMHC_confidence), ":")
-  pvalue_list <- strsplit(as.character(meta$pMHC_pvalues), ":")
+  meta <- object@meta.data
   
-  for (i in seq_along(classifications_list)) {
-     
-    if(is_negative(classifications_list[[i]])){
-      next
-    }
+  # Split columns into separate rows for filtering
+  meta_long <- meta %>%
+    dplyr::select(pMHC_classification, pMHC_confidence, pMHC_pvalues, clone_id, clone_size) %>%
+    filter(!is.na(pMHC_classification) & pMHC_classification != 'Negative') %>%
+    separate_rows(pMHC_classification, pMHC_confidence, pMHC_pvalues, sep = ":") %>%
+    mutate(
+      pMHC_confidence = as.numeric(pMHC_confidence),
+      pMHC_pvalues = as.numeric(pMHC_pvalues)
+    ) %>%
+    mutate(
+      # Replace NAs with appropriate placeholders
+      pMHC_confidence = ifelse(is.na(pMHC_confidence) | pMHC_confidence <= 0, -Inf, pMHC_confidence),
+      pMHC_pvalues = ifelse(is.na(pMHC_pvalues), Inf, pMHC_pvalues)
+    ) %>% unique()
   
-    confidences <- confidence_list[[i]]
-    confidences[is.na(confidences) | confidences <= 0] <- -Inf # Set to -Inf to be filtered out
-    confidences <- as.numeric(confidences)
-    
-    pvalues <- pvalue_list[[i]] 
-    pvalues[is.na(pvalues)] <- Inf # Set to -Inf to be filtered out
-    pvalues <- as.numeric(pvalues)
-    
-     # Ensure that all confidences and pvalues are numeric
-    if (any(is.na(confidences)) | any(is.na(pvalues))) {
-      cat("NA values found in confidences or pvalues\n")
-      print(i)
-      next
-    }
-    
-    # Determine valid indices based on filters
-    if (p_value_or_confidence){
-      valid_indices <- which(confidences >= confidence_cutoff | pvalues <= pvalue_cutoff)
-    } else if (apply_confidence_filter && apply_pvalue_filter) {
-      valid_indices <- which(confidences >= confidence_cutoff & pvalues <= pvalue_cutoff)
-    } else if (apply_confidence_filter) {
-      valid_indices <- which(confidences >= confidence_cutoff)
-    } else if (apply_pvalue_filter) {
-      valid_indices <- which(pvalues <= pvalue_cutoff)
-    } else {
-      valid_indices <- seq_along(confidences)
-    }
-    
-    if (length(valid_indices) > 0) {
-      meta$pMHC_classification[i] <- paste(classifications_list[[i]][valid_indices], collapse = ":")
-      meta$pMHC_confidence[i] <- paste(confidences[valid_indices], collapse = ":")
-      meta$pMHC_pvalues[i] <- paste(pvalues[valid_indices], collapse = ":")
-    } else {
-      meta$pMHC_classification[i] <- NA
-      meta$pMHC_confidence[i] <- NA
-      meta$pMHC_pvalues[i] <- NA
-    }
+  
+  # Add prefixes to the condition and condition_scope
+  condition_parsed <- gsub(
+    "\\b(confidence|pvalues|classification)\\b",
+    "pMHC_\\1",
+    condition
+  )
+  if (!is.null(condition_scope)) {
+    condition_scope_parsed <- gsub(
+      "\\b(confidence|pvalues|classification)\\b",
+      "pMHC_\\1",
+      condition_scope
+    )
   }
-  meta$pMHC_classification[meta$pMHC_classification_unf == 'Negative' &
-                               !is.na(meta$pMHC_classification_unf)] <- 'Negative'
-  object@meta.data <- meta[Cells(object),]
   
-  object@commands$filter_pmhc <- TRUE
+  meta_filtered_collapsed <- meta_long %>%
+    mutate(
+      scope_filter = if (!is.null(condition_scope)) eval(parse(text = condition_scope_parsed)) else TRUE,
+      valid = if_else(scope_filter, eval(parse(text = condition_parsed)), TRUE)
+    ) %>%
+    filter(valid) %>%
+    group_by(clone_id) %>%
+    summarise(
+      pMHC_classification = paste(pMHC_classification, collapse = ":"),
+      pMHC_confidence = paste(pMHC_confidence, collapse = ":"),
+      pMHC_pvalues = paste(pMHC_pvalues, collapse = ":"),
+      .groups = "drop"
+    )
+  
+  object@meta.data <- object@meta.data %>%
+    rownames_to_column('rownames') %>%
+    select(-pMHC_classification, -pMHC_confidence, -pMHC_pvalues) %>%
+    left_join(meta_filtered_collapsed, by = "clone_id") %>%
+    column_to_rownames('rownames') %>%
+    arrange(match(rownames(.), Cells(object)))
   
   return(object)
 }
+
 
 is_single_na <- function(x) {
   if (length(x) == 1 && is.na(x)) {
@@ -372,5 +402,79 @@ is_single_na <- function(x) {
 
 is_negative <- function(x) {
   length(x) == 1 && !is.na(x) && x == 'Negative'
+}
+
+
+recalculate_confidence <- function(object, assay='pMHC', slot='scale.data', ...){
+  
+  paired_clones <- object@meta.data %>%
+    dplyr::select(clone_id, pMHC_classification, pMHC_confidence) %>%
+    filter(!is.na(pMHC_classification) & pMHC_classification != 'Negative') %>% 
+    distinct()
+  
+  uclones <- paired_clones$clone_id %>% unique()
+  
+  clones_pbulk <- ClonePseudobulk(object %>% subset(clone_id %in% uclones), 
+                                  assay = assay, clone_col = 'clone_id', 
+                                  slot = slot)
+  
+  n_iter <- ncol(clones_pbulk)
+  pmhc_to_bc <- setNames(object@misc$pmhc$pmhc, object@misc$pmhc$Barcode)
+  bc_to_pmhc <- setNames(object@misc$pmhc$Barcode, object@misc$pmhc$pmhc)
+  
+  new_confidences <- list()
+  for (i in 1:n_iter){
+    
+    specificities_i <- paired_clones %>% 
+      filter(clone_id == colnames(clones_pbulk)[i]) %>% 
+      separate_rows(c(pMHC_classification, pMHC_confidence), sep = ':') %>%
+      mutate(pMHC_classification = recode(pMHC_classification, !!!pmhc_to_bc))
+    
+    
+    cl_size <- object$clone_size[object$clone_id == colnames(clones_pbulk)[i]] %>% unique() %>% drop.na()
+    scores <- sort(clones_pbulk[,i], decreasing = F)
+    scores[scores < 0] <- 0
+    diffs <- diff(scores)
+    
+    scores_interpolated <- normalize_vector(scores[names(diffs)])
+    
+    names(scores) <- recode(names(scores), !!!pmhc_to_bc)
+    names(scores_interpolated) <- recode(names(scores_interpolated), !!!pmhc_to_bc)
+    
+    outliers <- scores[names(scores) %in% specificities_i$pMHC_classification]
+    
+    background <- scores_interpolated[!names(scores_interpolated) %in% specificities_i$pMHC_classification]
+    positives <- scores_interpolated[names(scores_interpolated) %in% specificities_i$pMHC_classification]
+    
+    deltas <- positives - mean(background)
+    
+    entropy <- object@misc$noise_score[recode(names(outliers), !!!bc_to_pmhc),]$entropy
+    concordance <- calculate_pmhc_concordance(clone_obj = subset(object, clone_id == colnames(clones_pbulk)[i]), 
+                                              assay='pMHC', slot='scale.data')
+    
+    names(concordance) <- recode(names(concordance), !!!pmhc_to_bc)
+    concordance <- concordance[names(outliers)]
+    
+    confidences <- calculate_confidence(entropy=entropy, concordances=concordance, 
+                                        clone_size=cl_size, deltas=deltas, #...)
+                                        gamma=0, beta=0)
+    
+    specificities_i$pMHC_confidence <- confidences
+    
+    new_confidences[[colnames(clones_pbulk)[i]]] <- specificities_i 
+  }
+  new_confidences <- bind_rows(new_confidences) %>%
+    group_by(clone_id) %>%
+    summarise(across(everything(), ~ paste(., collapse = ":"), .names = "{.col}"))
+  
+  object@meta.data <- object@meta.data %>%
+    left_join(new_confidences, by = "clone_id", suffix = c("", "_new")) %>%
+    mutate(
+      pMHC_confidence = ifelse(!is.na(pMHC_confidence_new), pMHC_confidence_new, pMHC_confidence),
+      pMHC_classification = ifelse(!is.na(pMHC_classification_new), pMHC_classification_new, pMHC_classification)
+    ) %>%
+    select(-c(pMHC_confidence_new, pMHC_classification_new))
+    
+  return(object)
 }
 

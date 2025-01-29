@@ -44,7 +44,7 @@ library(EnvStats)
 #' }
 #' 
 #' @export
-rosnerTest <- function(x, k = 3, alpha = 0.05, warn = TRUE, 
+rosnerTest2 <- function(x, k = 3, alpha = 0.05, warn = TRUE, 
                         params = 'iteratively', remove_for_params = 3){
   data.name <- deparse(substitute(x))
   if (!params %in% c('iteratively', 'remove_topx', 'extreme_params')){

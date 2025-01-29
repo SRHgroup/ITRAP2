@@ -9,6 +9,18 @@ tcr_pmhc_permutation.test(
   barcodes_to_test,
   clone_coords,
   stab_z = 1,
+  df = 4,
+  sample_permutation = "within_pmhc",
+  n_permutations = 1000,
+  p_adj_method = "BH"
+)
+
+tcr_pmhc_permutation.test(
+  pmhc_mat,
+  barcodes_to_test,
+  clone_coords,
+  stab_z = 1,
+  df = 4,
   sample_permutation = "within_pmhc",
   n_permutations = 1000,
   p_adj_method = "BH"
@@ -20,11 +32,17 @@ tcr_pmhc_permutation.test(
 }
 \value{
 (\code{numeric})
+
+(\code{numeric})
 }
 \description{
 Perform permutation test for a specific pMHC-TCR pair
+
+Perform permutation test for a specific pMHC-TCR pair
 }
 \examples{
+tcr_pmhc_permutation.test()
+
 tcr_pmhc_permutation.test()
 
 }

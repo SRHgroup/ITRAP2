@@ -19,6 +19,7 @@ pmhc_heatmap(
   condpalette = NULL,
   highlight_column = "pMHC_classification",
   stop_large_highlighting = T,
+  show_heatmap_legend = T,
   rowm.fonts = 8,
   column_title_fonts = 10,
   column_title_rot = 45,

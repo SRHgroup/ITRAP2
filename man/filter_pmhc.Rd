@@ -4,24 +4,18 @@
 \alias{filter_pmhc}
 \title{Filter pMHC Classifications Based on Confidence Scores}
 \usage{
-filter_pmhc(
-  object,
-  confidence_cutoff = 1.5,
-  pvalue_cutoff = 0.2,
-  p_value_or_confidence = F,
-  apply_confidence_filter = T,
-  apply_pvalue_filter = T
-)
+filter_pmhc(object, condition = NULL, condition_scope = NULL)
 }
 \arguments{
 \item{object}{A Seurat object containing pMHC classification and confidence data within its \code{meta.data}.}
 
-\item{confidence_cutoff}{A numeric value specifying the confidence score cutoff
-below which pMHC classifications will be considered unreliable and thus filtered out.}
+\item{condition}{string, what condition to apply to filter pMHC-TCR assigments}
+
+\item{condition_scope}{string, only apply filter to clones that meat a specific condition}
 }
 \value{
 The input Seurat object with \code{pMHC_classification} and \code{pMHC_confidence}
-in its \code{meta.data} filtered based on the specified \code{confidence_cutoff}.
+in its \code{meta.data} filtered based on the specified \code{condition} and \code{condition_score}.
 The function also updates \code{object@commands} to indicate that pMHC filtering has been performed.
 }
 \description{
@@ -38,7 +32,7 @@ with an "_unf" suffix. If \code{pmhc_filter} was executed before, it starts with
 Post-filtering, cells marked as 'Negative' are preserved as such, irrespective of the confidence score.
 }
 \examples{
-# Assuming 'seurat_obj' is a Seurat object with pMHC classification and confidence information
-seurat_obj <- filter_pmhc(seurat_obj, confidence_cutoff = 0.5)
+filter_pmhc(object, condition = "pvalues < 0.05")
+filter_pmhc(object, condition = "pvalues < 0.05", condition_scope = "clone_size == 1")
 
 }

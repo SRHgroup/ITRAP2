@@ -12,6 +12,12 @@ pmhc_dist_per_clone(
   xlimits = NULL,
   return_pmhcs = F,
   display_pvalues = F,
+  conc_fontsize = 8,
+  dot_fontsize = 8,
+  hm_fontsize = 8,
+  extra_title = NULL,
+  heatmap_legend_side = "left",
+  hm_legent_direction = "vertical",
   ...
 )
 }
