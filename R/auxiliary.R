@@ -23,13 +23,13 @@
 #' @importFrom Seurat GetAssayData
 ClonePseudobulk <- function(object, assay="pMHC", slot="scale.data", 
                             clone_col="clone_id", z_score_threshold=2,
-                            filter_by_zscore=FALSE) {
+                            filter_by_zscore=FALSE, FUN=median) {
   
   if (filter_by_zscore){
     warning("filter_by_zscore should only be used if slot='scale.data'")
     cells <- Cells(object)
     cells_to_subset <- apply(GetAssayData(object = object, assay = assay, layer = slot), 
-                          2, function(x) any(x > threshold))
+                             2, function(x) any(x > threshold))
     cells_subset <- cells[cells_to_subset]
     object <- subset(object, cells = cells_subset)
   }
@@ -50,8 +50,8 @@ ClonePseudobulk <- function(object, assay="pMHC", slot="scale.data",
     
     # Calculate row means, ensuring output is a vector if only one row.
     if (is.matrix(group_data)) {
-      return(rowMeans(group_data, na.rm = TRUE))
-        # Directly return the column as is if only one column present.
+      return(apply(group_data, 1, FUN, na.rm = TRUE))
+      # Directly return the column as is if only one column present.
     } else {
       return(group_data[,1])
     }
@@ -130,7 +130,7 @@ normalize_vector <- function(vec) {
 #' @export
 extract_pairs <- function(object, custom_columns = NULL){
   
-  default_columns <- c("pMHC_classification", "pMHC_confidence", "pMHC_pvalues",
+  default_columns <- c("pMHC_classification", "pMHC_confidence", "pMHC_pvalues", "pMHC_wclone_pvalues",
                        "clone_id", "junction_beta", "junction_alpha", "clone_id", 'clone_size',
                        "v_call_beta", "c_call_beta", "j_call_beta", "d_call_beta",
                        "v_call_alpha", "c_call_alpha", "j_call_alpha", "d_call_alpha")
@@ -142,7 +142,7 @@ extract_pairs <- function(object, custom_columns = NULL){
       filter(pMHC_classification != 'Negative' & !is.na(pMHC_classification)) %>%
       filter(productive_beta & productive_alpha) %>%
       select(!!!syms(all_columns)) %>%
-      separate_rows(c(pMHC_classification, pMHC_confidence, pMHC_pvalues), sep = ':') %>%
+      separate_rows(c(pMHC_classification, pMHC_confidence, pMHC_pvalues, pMHC_wclone_pvalues), sep = ':') %>%
       mutate(HLA = gsub('_.+', '', pMHC_classification)) %>%
       mutate(peptide = gsub('.+_', '', pMHC_classification)) %>%
       mutate(tcr_pmhc = paste0(junction_beta, '_', junction_alpha, '_', peptide)) %>%

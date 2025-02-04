@@ -225,7 +225,7 @@ pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10, slot = 'counts
 pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_order=NULL, split_cols=FALSE, highlight_pmhc.tcr=F,
                          hm_breaks = NULL, hm_palette=c("blue", "white", "red"), pmhc_palette=NULL, pmhc_order=NULL,
                          condpalette=NULL, highlight_column="pMHC_classification", stop_large_highlighting=T, show_heatmap_legend=T, 
-                         rowm.fonts=8, column_title_fonts = 10, column_title_rot = 45, use_original_order=T, 
+                         rowm.fonts=8, column_title_fonts = 10, column_title_rot = 45, use_original_order=T, annotation_colors=list(),
                          clean_mat=F, add_tcr_cluster=F, show_row_names=T, pmhc_subset=NULL, custom_annotations=c(), 
                          skip_bugged_frames=F, show_legend_ann=c(F, T, T), bugged_width=.6, max_cols=16000, 
                          verbose=T, ...) {
@@ -344,11 +344,33 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
     pmhc_mat_ordered <- pmhc_mat_ordered[pmhc_order,]
   }
   
-  custom_ann_list <- setNames(lapply(custom_annotations, function(cn) ann_subset[cells_order,][[cn]]), custom_annotations)
+  # Define colors for annotations
+  color_list <- list()
+  
+  if (!is.null(custom_annotations)){
+    for (ann_col in custom_annotations) {
+      if (!is.null(annotation_colors[[ann_col]])) {
+        color_list[[ann_col]] <- annotation_colors[[ann_col]]
+      } else {
+        unique_values <- unique(ann_subset_ordered[[ann_col]]) %>% na.omit()
+        color_list[[ann_col]] <- setNames(distinctColorPalette(length(unique_values)), unique_values)
+      }
+    }
+  }
+  
+  # Default color palettes
+  ncl <- ann_subset_ordered$clone_id %>% unique() %>% length()
+  clpalette <- get_random_grid_colors(ncl, seed=3)
+  names(clpalette) <- ann_subset_ordered$clone_id %>% unique()
+  
+  #palette_list <- list(clone_id = clpalette, condition = condpalette, pmhc = pmhc_palette)
+  palette_list <- c(palette_list, color_list)  # Merge custom colors
+  
+  custom_ann_list <- setNames(lapply(custom_annotations, function(cn) ann_subset_ordered[[cn]]), custom_annotations)
   
   ann_list <- list(
-    clone_id = ann_subset[cells_order,]$clone_id, 
-    pmhc = gsub(':', '\n', ann_subset[cells_order,][[highlight_column]])
+    clone_id = ann_subset_ordered$clone_id, 
+    pmhc = gsub(':', '\n', ann_subset_ordered[[highlight_column]])
   )
   ann_list <- c(ann_list, custom_ann_list)
   
@@ -366,7 +388,7 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
   }
   
   pmhc_subset_hmap <- Heatmap(
-    pmhc_mat_ordered, name = "pmhc_subset_hmap", 
+    pmhc_mat_ordered, name = "pmhc_tcr_hmap", 
     show_heatmap_legend = show_heatmap_legend,
     show_row_names = show_row_names, show_column_names = FALSE,
     col = col_fun, column_split = split_cols,
@@ -438,10 +460,11 @@ pmhc_heatmap_old <- function(object, clones, patient=NULL, slot='counts', clones
                          hm_breaks = NULL, hm_palette=c("blue", "white", "red"), pmhc_palette=NULL, pmhc_order=NULL,
                          condpalette=NULL, highlight_pmhc.tcr=F, stop_large_highlighting=T, rowm.fonts=8,  
                          column_title_fonts = 10, column_title_rot = 45, use_original_order=T, clean_mat=F, 
-                         add_tcr_cluster=F, show_row_names=T, pmhc_subset=NULL, custom_annotations=c(), 
+                         add_tcr_cluster=F, show_row_names=T, pmhc_subset=NULL, custom_annotations=c(), save_highligted_hm=F, saving_path,
                          skip_bugged_frames=F, show_legend_ann=c(F, T, T) ,bugged_width=.6, max_cols=16000, verbose=T, ...){
   
   library(randomcoloR)
+  library(uniformly)
   library(circlize)
   library(ComplexHeatmap)
   
@@ -608,7 +631,15 @@ pmhc_heatmap_old <- function(object, clones, patient=NULL, slot='counts', clones
     if (!is.null(split_cols)){
       stop('Highlightinh specificities in the clone splited heatmap is not supported')
     }
-    draw(pmhc_subset_hmap)
+    
+    if (save_highligted_hm){
+      CairoJPEG(paste0(saving_path), width=1200, height=800, res=100)
+      grid.newpage()  # Ensure new page for the heatmap
+      draw(pmhc_subset_hmap)
+    } else {
+      draw(pmhc_subset_hmap)
+    }
+    
     tcr_pmhc <- ann_subset_ordered %>%
       dplyr::select(clone_id, pMHC_classification) %>%
       filter(!is.na(pMHC_classification) & pMHC_classification != 'Negative') %>%

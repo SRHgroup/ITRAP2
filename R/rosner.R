@@ -28,6 +28,9 @@ library(EnvStats)
 #' `remove_topx` would remove top x most extreme z-scores from the clone, leaving
 #'  every potential outliers out, sinse we don't expect more than 2-3 specificities
 #'  per clone.
+#'  @param pval_dist what distribution type to use to calculate p value for R statistics
+#'  `normal` pnorm function
+#'  `t` pt function
 #' @param remove_for_params for running rosner test in remove_topx setting in `params`
 #' how much most extreme z-scores to remove, default is 3
 #' 
@@ -44,8 +47,8 @@ library(EnvStats)
 #' }
 #' 
 #' @export
-rosnerTest2 <- function(x, k = 3, alpha = 0.05, warn = TRUE, 
-                        params = 'iteratively', remove_for_params = 3){
+rosnerTest2 <- function(x, k = 3, alpha = 0.05, warn = TRUE, pval_dist = 't',
+         params = 'iteratively', remove_for_params = 3){
   data.name <- deparse(substitute(x))
   if (!params %in% c('iteratively', 'remove_topx', 'extreme_params')){
     stop('params  must me either iteratively, remove_topx or extreme_params')
@@ -85,7 +88,6 @@ rosnerTest2 <- function(x, k = 3, alpha = 0.05, warn = TRUE,
                       "on the estimated Type I error level."))
     }
   }
-
   
   R <- rep(as.numeric(NA), k)
   x.vec <- rep(as.numeric(NA), k)
@@ -93,10 +95,14 @@ rosnerTest2 <- function(x, k = 3, alpha = 0.05, warn = TRUE,
   
   mean.vec <- rep(as.numeric(NA), k)
   sd.vec <- rep(as.numeric(NA), k)
-  new.x <- x
-  new.obs.num <- obs.num
+  p_values <- rep(as.numeric(NA), k)  # Store p-values
+  
+  lambda <- rosnerTestLambda(n = n, k = 1:k, alpha = alpha)
   
   if (params == 'iteratively'){
+    new.x <- x
+    new.obs.num <- obs.num
+    
     for (i in 1:k) {
       
       mean.vec[i] <- mean(new.x)
@@ -129,38 +135,23 @@ rosnerTest2 <- function(x, k = 3, alpha = 0.05, warn = TRUE,
       sd.x <- sd(x[1:(length(x)-subs)])
     }
     
-    for (i in 1:k) {
+    obs.num.vec <- order(x, decreasing = T)[1:k]
+    x.vec <- x[obs.num.vec]
+    abs.z = abs(x.vec - mean.x)/sd.x
+    R <- abs.z[1:k]
+    mean.vec <- rep(mean.x, k)
+    sd.vec <- rep(sd.x, k)
     
-      abs.z = abs(new.x - mean.x)/sd.x
-      R[i] <- max(abs.z)
-      index <- which(abs.z == R[i])[1]
-      x.vec[i] <- new.x[index]
-      obs.num.vec[i] <- new.obs.num[index]
-      
-      new.x <- new.x[-index]
-      new.obs.num <- new.obs.num[-index]
+    if (pval_dist == 'normal'){
+      p_values <- pnorm(q = R / lambda, lower.tail = F)  
+    } else if (pval_dist == 't') {
+      df <- length(R) - (1:k) - 2
+      df[df<=0] <- 1
+      p_values <- pt(R, df = df, lower.tail = F) 
     }
-  } else if (params == 'extreme_params'){
-    
-    extr <- extRemes::fevd(x)
-    
-    mean.x <- extr$results$par["location"]
-    sd.x <- extr$results$par["scale"]
-    for (i in 1:k) {
-      
-      abs.z = abs(new.x - mean.x)/sd.x
-      R[i] <- max(abs.z)
-      index <- which(abs.z == R[i])[1]
-      x.vec[i] <- new.x[index]
-      obs.num.vec[i] <- new.obs.num[index]
-      
-      new.x <- new.x[-index]
-      new.obs.num <- new.obs.num[-index]
-    }
-  }
+  } 
   
   num.outlier.vec <- 1:k
-  lambda <- rosnerTestLambda(n = n, k = 1:k, alpha = alpha)
   outlier <- R > lambda
   
   if (any(outlier)) {
@@ -169,9 +160,9 @@ rosnerTest2 <- function(x, k = 3, alpha = 0.05, warn = TRUE,
   }
   
   out.df <- data.frame(num.outlier.vec - 1, mean.vec, sd.vec, 
-                       x.vec, obs.num.vec, R, lambda, outlier)
+                       x.vec, obs.num.vec, R, lambda, outlier, p_values)
   names(out.df) <- c("i", "Mean.i", "SD.i", "Value", "Obs.Num", 
-                     "R.i+1", "lambda.i+1", "Outlier")
+                     "R.i+1", "lambda.i+1", "Outlier", "P.Values")
   distribution <- "Normal"
   dist.abb <- "norm"
   stat <- R
@@ -186,6 +177,7 @@ rosnerTest2 <- function(x, k = 3, alpha = 0.05, warn = TRUE,
                                                                                          sep = ""), method = "Rosner's Test for Outliers", 
                    data = x, data.name = data.name, bad.obs = bad.obs, all.stats = out.df)
   oldClass(ret.list) <- "gofOutlier"
+  
   ret.list
 }
 
@@ -220,3 +212,84 @@ cbind.no.warn <- function (..., deparse.level = 1)
     base::cbind(..., deparse.level = deparse.level)
   }
 
+
+#' Detect Outliers Using Extreme Value Theory
+#'
+#' This function applies an Extreme Value Theory (EVT) approach using the Gumbel distribution to detect outliers.
+#' It estimates the distribution parameters and calculates p-values for each observation, based on different extreme
+#' outlier detection strategies.
+#'
+#' @param x Numeric vector of values to test for extreme outliers.
+#' @param type Character. Method to estimate extreme values. Options:
+#'   - `'regular'` (default): Uses the estimated Gumbel distribution parameters.
+#'   - `'reestimate_params'`: Iteratively re-estimates the distribution parameters, removing extreme values one at a time.
+#'   - `'extreme_without_tail'`: Estimates distribution parameters after removing the three highest values.
+#'
+#' @return A numeric vector of p-values for each observation in `x`. Lower values indicate a higher likelihood of being an outlier.
+#' If `reestimate_params` or `extreme_without_tail` is used, the function may return slightly different p-values based on the refined distribution.
+#'
+#' @examples
+#' set.seed(123)
+#' x <- c(rnorm(100, mean=50, sd=10), 120, 130, 140)  # Simulated data with outliers
+#' pvals <- extreme_outlier_test(x, type="regular")
+#' print(pvals)
+#'
+#' @export
+extreme_outlier_test <- function(x, type='regular', double_loc_scale=F){
+  
+  extr <- extRemes::fevd(x = x, type = 'Gumbel')
+  location <- extr$results$par["location"]
+  scale <- extr$results$par["scale"]
+  
+  if (type == 'reestimate_params') { # might be an overkill
+    pvalues_i <- extRemes::pevd(q = x, loc = location, scale = scale, type = 'Gumbel', lower.tail = F)
+    
+    k <- 5
+    iter <- 0
+    x_iter <- x
+    while(pvalues_i[length(pvalues_i)] < extreme_alpha){
+      iter <- iter + 1
+      
+      x_iter <- x_iter[-length(x_iter)]
+      
+      if (all(x_iter == 0)) {
+        break
+      }
+      
+      extr_i <- extRemes::fevd(x_iter, type = 'Gumbel')
+      
+      location_i <- extr_i$results$par["location"]
+      scale_i <- extr_i$results$par["scale"]
+      #shape_i <- extr_i$results$par["shape"]
+      
+      pvalues_i <- extRemes::pevd(q = x_iter, loc = location_i, scale = scale_i, type = 'Gumbel', lower.tail = F)
+      
+      if (iter >= k) {
+        break
+      }
+    }
+    pvalues <- extRemes::pevd(q = x, loc = location_i, scale = scale_i, type = 'Gumbel', lower.tail = F)
+  } else if (type == 'extreme_without_tail') {
+    
+    x_new <- x[1:(length(x)-3)]
+    
+    extr_i <- extRemes::fevd(x_new, type = 'Gumbel')
+    
+    location_i <- extr_i$results$par["location"]
+    scale_i <- extr_i$results$par["scale"]
+    #shape_i <- extr_i$results$par["shape"]
+    
+    pvalues <- extRemes::pevd(q = x, loc = location_i, scale = scale_i, type = 'Gumbel', lower.tail = F)
+  } else if (type == 'regular') {
+    if (double_loc_scale){
+      location <- location*2
+      scale <- scale*2
+    }
+    pvalues <- extRemes::pevd(q = x, loc = location, scale = scale, type = 'Gumbel', lower.tail = F)
+    #pvalues <- 1-extRemes::pevd(q = x, loc = location, scale = scale, shape = shape)
+  } else {
+    stop('extreme type can only by regular, reestimate_params or extreme_without_tail')
+  }
+  
+  return(pvalues)
+}

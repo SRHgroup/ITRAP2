@@ -324,14 +324,16 @@ filter_pmhc <- function(object, condition = NULL, condition_scope = NULL) {
       mutate(
         pMHC_classification_unf = pMHC_classification,
         pMHC_confidence_unf = pMHC_confidence,
-        pMHC_pvalues_unf = pMHC_pvalues
+        pMHC_pvalues_unf = pMHC_pvalues,
+        pMHC_wclone_pvalues_unf = pMHC_wclone_pvalues
       )
   } else {
     object@meta.data <- object@meta.data %>%
       mutate(
         pMHC_classification = pMHC_classification_unf,
         pMHC_confidence = pMHC_confidence_unf,
-        pMHC_pvalues = pMHC_pvalues_unf
+        pMHC_pvalues = pMHC_pvalues_unf,
+        pMHC_wclone_pvalues = pMHC_wclone_pvalues_inf
       )
   }
   
@@ -339,32 +341,34 @@ filter_pmhc <- function(object, condition = NULL, condition_scope = NULL) {
   
   # Split columns into separate rows for filtering
   meta_long <- meta %>%
-    dplyr::select(pMHC_classification, pMHC_confidence, pMHC_pvalues, clone_id, clone_size) %>%
+    dplyr::select(pMHC_classification, pMHC_confidence, pMHC_pvalues, pMHC_wclone_pvalues, clone_id, clone_size) %>%
     filter(!is.na(pMHC_classification) & pMHC_classification != 'Negative') %>%
-    separate_rows(pMHC_classification, pMHC_confidence, pMHC_pvalues, sep = ":") %>%
+    separate_rows(pMHC_classification, pMHC_confidence, pMHC_pvalues, pMHC_wclone_pvalues, sep = ":") %>%
     mutate(
       pMHC_confidence = as.numeric(pMHC_confidence),
-      pMHC_pvalues = as.numeric(pMHC_pvalues)
+      pMHC_pvalues = as.numeric(pMHC_pvalues),
+      pMHC_wclone_pvalues = as.numeric(pMHC_wclone_pvalues)
     ) %>%
     mutate(
       # Replace NAs with appropriate placeholders
       pMHC_confidence = ifelse(is.na(pMHC_confidence) | pMHC_confidence <= 0, -Inf, pMHC_confidence),
-      pMHC_pvalues = ifelse(is.na(pMHC_pvalues), Inf, pMHC_pvalues)
+      pMHC_pvalues = ifelse(is.na(pMHC_pvalues), Inf, pMHC_pvalues),
+      pMHC_wclone_pvalues = ifelse(is.na(pMHC_wclone_pvalues), Inf, pMHC_wclone_pvalues) 
     ) %>% unique()
   
-  
-  # Add prefixes to the condition and condition_scope
-  condition_parsed <- gsub(
-    "\\b(confidence|pvalues|classification)\\b",
-    "pMHC_\\1",
-    condition
+  # Define replacements ensuring exact word matching
+  replacements <- c(
+    "\\bpvalues\\b" = "pMHC_pvalues",
+    "\\bwclone_pvalues\\b" = "pMHC_wclone_pvalues",
+    "\\bconfidence\\b" = "pMHC_confidence",
+    "\\bclassification\\b" = "pMHC_classification"
   )
+  
+  # Perform replacements with exact word boundaries
+  condition_parsed <- stringr::str_replace_all(condition, replacements)
+  
   if (!is.null(condition_scope)) {
-    condition_scope_parsed <- gsub(
-      "\\b(confidence|pvalues|classification)\\b",
-      "pMHC_\\1",
-      condition_scope
-    )
+    condition_scope_parsed <- stringr::str_replace_all(condition_scope, replacements)
   }
   
   meta_filtered_collapsed <- meta_long %>%
@@ -378,12 +382,13 @@ filter_pmhc <- function(object, condition = NULL, condition_scope = NULL) {
       pMHC_classification = paste(pMHC_classification, collapse = ":"),
       pMHC_confidence = paste(pMHC_confidence, collapse = ":"),
       pMHC_pvalues = paste(pMHC_pvalues, collapse = ":"),
+      pMHC_wclone_pvalues = paste(pMHC_wclone_pvalues, collapse = ':'),
       .groups = "drop"
     )
   
   object@meta.data <- object@meta.data %>%
     rownames_to_column('rownames') %>%
-    select(-pMHC_classification, -pMHC_confidence, -pMHC_pvalues) %>%
+    select(-pMHC_classification, -pMHC_confidence, -pMHC_pvalues, -pMHC_wclone_pvalues) %>%
     left_join(meta_filtered_collapsed, by = "clone_id") %>%
     column_to_rownames('rownames') %>%
     arrange(match(rownames(.), Cells(object)))
