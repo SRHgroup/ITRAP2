@@ -48,7 +48,7 @@ library(EnvStats)
 #' 
 #' @export
 rosnerTest2 <- function(x, k = 3, alpha = 0.05, warn = TRUE, pval_dist = 't',
-         params = 'iteratively', remove_for_params = 3){
+         params = 'remove_topx', remove_for_params = 3){
   data.name <- deparse(substitute(x))
   if (!params %in% c('iteratively', 'remove_topx', 'extreme_params')){
     stop('params  must me either iteratively, remove_topx or extreme_params')
@@ -147,12 +147,14 @@ rosnerTest2 <- function(x, k = 3, alpha = 0.05, warn = TRUE, pval_dist = 't',
     } else if (pval_dist == 't') {
       df <- length(R) - (1:k) - 2
       df[df<=0] <- 1
-      p_values <- pt(R, df = df, lower.tail = F) 
+      p_values <- pt(R, df = df, lower.tail = F)
+      p_values[is.na(p_values)] <- 1
     }
   } 
   
   num.outlier.vec <- 1:k
   outlier <- R > lambda
+  outlier[is.na(outlier)] <- F
   
   if (any(outlier)) {
     index <- max(num.outlier.vec[outlier], na.rm = TRUE)

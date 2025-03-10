@@ -438,9 +438,9 @@ permutation_test_specific_pair <- function(object, bc_or_pmhc, use_pmhc=T,
   }
   
   if (is.null(full_tcr)){
-    clones_coors <- which(object$clone_id == clone)
+    clone_coords <- which(object$clone_id == clone)
   } else if (is.null(clone)){
-    clones_coors <- which(object$full_tcr == full_tcr)
+    clone_coords <- which(object$full_tcr == full_tcr)
   }
   
   p_values <- tcr_pmhc_permutation.test(pmhc_mat=pmhc_mat, 
@@ -560,7 +560,8 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC',
                         adjust_permutation = FALSE, adjust_test_within_clone = FALSE, padj_method = "BH",
                         z_score_threshold=2, calculate_pvalue=TRUE, calculate_confidence_score=TRUE,
                         alpha=1, beta=1, gamma=1, delta=1, force=F, verbose=TRUE, ...) {
-  
+  library(shades)
+  library(EnvStats)
   
   if (cl_size_thresh<2) {
     stop('cl_size_thresh must be minimum 2')
@@ -662,9 +663,9 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC',
     
     if (assignment == 'rosner') {
       
-      if (length(scores[scores != 0]) < 25){
+      if (length(scores[scores != 0]) < 25 & length(scores)>25){
         scores <- scores[order(scores)[(length(scores)-26):length(scores)]]
-      } else {
+      } else if (length(scores)>25) { # remove else if (length(scores)>25) to just else if big changes
         scores <- scores[scores != 0]
       }
       
@@ -755,7 +756,7 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC',
     
     entropy <- object@misc$noise_score[names(outliers),]$entropy
     concordance <- calculate_pmhc_concordance(clone_obj = subset(object, clone_id == colnames(clone_bulk)[i]), 
-                                              assay='pMHC', slot='scale.data')
+                                              assay='pMHC', slot='data')
     
     concordance <- concordance[names(outliers)]
     

@@ -269,7 +269,7 @@ calculate_pmhc_concordance <- function(clone_obj, exclude_top_pmhc = TRUE,
 #' calculate_confidence(entropy, concordances, clone_size, alpha = 1, beta = 1, gamma = 1)
 #'
 #' @export
-calculate_confidence <- function(entropy, concordances, clone_size, deltas,
+calculate_confidence <- function(entropy, concordances, clone_size, deltas, replace.na=T,
                                  alpha = 1, beta = 1, gamma = 1, delta = 1) {
   if (length(clone_size) > 1) {
     stop("Clone size should be a single digit representing the size of the clone.")
@@ -279,8 +279,17 @@ calculate_confidence <- function(entropy, concordances, clone_size, deltas,
     stop("Length of entropy and concordances must be equal.")
   }
   
-  # Calculate confidence score for each pMHC-TCR pair
-  confidence_scores <- alpha * concordances + beta * log(clone_size) + delta * deltas - gamma * entropy
+  safe <- function(x, min_value = 0) {
+    if (length(x) == 0) return(min_value)
+    x[is.na(x)] <- min_value
+    x[x < min_value] <- min_value
+    return(x)
+  }
+  
+  confidence_scores <- alpha * safe(concordances) +
+    beta  * log(safe(clone_size, min_value = 1)) +
+    delta * safe(deltas) -
+    gamma * safe(entropy)
   
   return(round(confidence_scores, 2))
 }
@@ -313,7 +322,7 @@ calculate_confidence <- function(entropy, concordances, clone_size, deltas,
 #'
 #' @export
 #object <- subset(obj, clone_id %in% weird)
-filter_pmhc <- function(object, condition = NULL, condition_scope = NULL) {
+filter_pmhc <- function(object, condition = NULL, condition_scope = NULL, custom_column=c()) {
   library(dplyr)
   library(tidyr)
   library(rlang)

@@ -93,7 +93,7 @@ clonal_pmhc_heatmap <- function(data_matrix, fontsize=8,
 #' @export
 pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10, slot = 'counts', 
                                 xlimits=NULL, return_pmhcs=F, display_pvalues=F, 
-                                conc_fontsize=8, dot_fontsize=8, hm_fontsize=8, 
+                                conc_fontsize=8, dot_fontsize=8, hm_fontsize=8, rel_height1=0.05,
                                 extra_title=NULL, heatmap_legend_side='left', hm_legent_direction = "vertical",  
                                 ...){
   
@@ -156,7 +156,8 @@ pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10, slot = 'counts
     theme_classic() +
     labs(x = "concordance", y = "") +
     theme(axis.text.x = element_text(angle = 45, hjust = 1),
-          axis.text.y = element_text(size = conc_fontsize))
+          axis.text.y = element_text(size = conc_fontsize)) +
+    xlim(0, 1)
   
   combined_plot <- cowplot::plot_grid(
     heatmap_gg, dists+ylab(''), conc_bp,
@@ -170,14 +171,39 @@ pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10, slot = 'counts
   }
   title <- cowplot::ggdraw() + cowplot::draw_label(title_text, fontface='bold')
   
+  if (display_pvalues){
+    pvals <- permutation_test_specific_pair(object = object, bc_or_pmhc = preserve,  
+                                            use_pmhc = T, clone = clone)
+    
+    pvals_df <- data.frame(pmhc = factor(names(pvals),levels=rev(preserve)),
+                           pvalues = -log10(pvals+0.0001))
+    
+    pvals_bp <- ggplot(pvals_df,
+                      aes(y = pmhc, x = pvalues)) +
+      geom_bar(stat = "identity", fill = "steelblue") +
+      geom_hline(yintercept = y_vals, linetype = "dashed", colour = "grey", size = 0.5) +
+      theme_classic() +
+      geom_vline(xintercept = -log10(0.05), color='red') +
+      labs(x = "-log10(p values)", y = "") +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1),
+            axis.text.y = element_text(size = conc_fontsize)) +
+      xlim(0, 4)
+    
+    combined_plot <- cowplot::plot_grid(
+      heatmap_gg, dists+ylab(''), conc_bp, pvals_bp,
+      align = "h",
+      ncol = 4,
+      rel_widths = c(3, 4.5, 2.5, 2.5), axis = 'l') 
+  }
+  
   if (return_pmhcs){
     return(list(
-      'plot'=cowplot::plot_grid(title, combined_plot, ncol = 1, rel_heights=c(0.05, 1)),
+      'plot'=combined_plot,
       'pmhc_vec'=concordance_df
       )
     )
   } else {
-    return(cowplot::plot_grid(title, combined_plot, ncol = 1, rel_heights=c(0.05, 1)))
+    return(combined_plot)
   }
 }
 
@@ -209,6 +235,7 @@ pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10, slot = 'counts
 #' @param show_row_names Logical; whether to display row names in the heatmap.
 #' @param pmhc_subset Optional; a subset of pMHCs to include in the heatmap.
 #' @param ... Additional arguments passed to the heatmap function.
+#' @param lwd thickness of the highliting frame
 #'
 #' @return A ComplexHeatmap object visualizing the specified pMHC distribution across clones. The heatmap 
 #' can be customized extensively via function arguments and supports highlighting of specific pMHC-TCR interactions.
@@ -222,13 +249,13 @@ pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10, slot = 'counts
 #' @importFrom circlize colorRamp2
 #' @export
 #' 
-pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_order=NULL, split_cols=FALSE, highlight_pmhc.tcr=F,
-                         hm_breaks = NULL, hm_palette=c("blue", "white", "red"), pmhc_palette=NULL, pmhc_order=NULL,
-                         condpalette=NULL, highlight_column="pMHC_classification", stop_large_highlighting=T, show_heatmap_legend=T, 
+pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_order=NULL, column_split_var=NULL, split_rows=NULL,
+                         highlight_pmhc.tcr=F, hm_breaks = NULL, hm_palette=c("blue", "white", "red"), clean_na_features=F,
+                         pmhc_palette=NULL, pmhc_order=NULL, condpalette=NULL, highlight_column="pMHC_classification", stop_large_highlighting=T, show_heatmap_legend=T, 
                          rowm.fonts=8, column_title_fonts = 10, column_title_rot = 45, use_original_order=T, annotation_colors=list(),
                          clean_mat=F, add_tcr_cluster=F, show_row_names=T, pmhc_subset=NULL, custom_annotations=c(), 
-                         skip_bugged_frames=F, show_legend_ann=c(F, T, T), bugged_width=.6, max_cols=16000, 
-                         verbose=T, ...) {
+                         skip_bugged_frames=F, show_legend_ann=c(F, T, T), bugged_width=.6, max_cols=16000, left_ann_vars=NULL, left_ann_palette=NULL,
+                         verbose=T, lwd=2, ...) {
   
   library(randomcoloR)
   library(circlize)
@@ -256,7 +283,7 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
   
   pat_pmhc <- object@misc$pmhc %>%
     filter(!is.na(Sequence)) %>%
-    { if(!is.null(patient)) filter(., Patient == patient) else . } %>%
+    { if(!is.null(patient)) filter(., grepl(patient, Patient)) else . } %>%
     pull(Barcode)
   
   pat_pmhc <- pat_pmhc[pat_pmhc %in% rownames(object@assays$pMHC@counts)]
@@ -264,11 +291,11 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
   pmhc_subset_ <- GetAssayData(object, layer = slot, assay = 'pMHC')
   pmhc_subset_ <- pmhc_subset_[,Cells(object)[object$clone_id %in% clones]][pat_pmhc,]
   
-  pmhc_subset_ann <- object@misc$pmhc %>%
-    filter(Barcode %in% row.names(pmhc_subset_)) %>%
-    { if(!is.null(patient)) filter(., Patient == patient) else . } %>%
-    as.data.frame() %>%
-    column_to_rownames('Barcode')
+  #pmhc_subset_ann <- object@misc$pmhc %>%
+  #  filter(Barcode %in% row.names(pmhc_subset_)) %>%
+  #  { if(!is.null(patient)) filter(., grepl(patient, Patient)) else . } %>%
+  #  as.data.frame() %>%
+  #  column_to_rownames('Barcode')
   
   bc_to_pmhc <- setNames(object@misc$pmhc$pmhc, object@misc$pmhc$Barcode)
   rownames(pmhc_subset_) <- recode(rownames(pmhc_subset_), !!!bc_to_pmhc)
@@ -369,8 +396,8 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
   custom_ann_list <- setNames(lapply(custom_annotations, function(cn) ann_subset_ordered[[cn]]), custom_annotations)
   
   ann_list <- list(
-    clone_id = ann_subset_ordered$clone_id, 
-    pmhc = gsub(':', '\n', ann_subset_ordered[[highlight_column]])
+    clone_id = ann_subset_ordered$clone_id#, 
+    #pmhc = gsub(':', '\n', ann_subset_ordered[[highlight_column]])
   )
   ann_list <- c(ann_list, custom_ann_list)
   
@@ -381,22 +408,60 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
     gap = unit(1, 'mm')
   )))
   
-  if (split_cols){
-    split_cols <- ann_subset[cells_order,]$clone_id
+  if (!is.null(column_split_var)){
+    split_cols <- ann_subset[cells_order,][[column_split_var]]
   } else {
     split_cols <- NULL
   }
   
+  if (!is.null(left_ann_vars)){
+    left_ann_df <- object@misc$pmhc
+    
+    pats <- object$Patient[object$clone_id %in% clones] %>% unique()
+    
+    if (length(pats) == 1){
+      left_ann_df <- left_ann_df %>% 
+        separate_rows(Patient, sep=':') %>% filter(Patient %in% pats) %>% unique()
+    }
+    
+    if (!is.null(pmhc_subset)){
+      left_ann_df <- left_ann_df %>%
+        filter(pmhc %in% pmhc_subset)
+    }
+    
+    if (!is.null(pmhc_order)){
+      left_ann_df <- left_ann_df %>% 
+        mutate(pmhc = factor(pmhc, levels = pmhc_order)) %>%
+        arrange(pmhc)
+    }
+    
+    left_ann_df <- left_ann_df  %>%
+      select(all_of(c(left_ann_vars, 'pmhc'))) %>%
+      column_to_rownames('pmhc')
+    
+    left_ann <- rowAnnotation(df = left_ann_df, 
+                              col = left_ann_palette)
+    
+  } else {
+    left_ann <- NULL
+  }
+  
+  if (clean_na_features){
+    nonna <- rownames( pmhc_mat_ordered)[rowSums(is.na( pmhc_mat_ordered)) == 0]
+    pmhc_mat_ordered <-  pmhc_mat_ordered[nonna,]
+  }
+  
   pmhc_subset_hmap <- Heatmap(
     pmhc_mat_ordered, name = "pmhc_tcr_hmap", 
-    show_heatmap_legend = show_heatmap_legend,
+    show_heatmap_legend = show_heatmap_legend, 
+    row_split = split_rows, column_split = split_cols,
     show_row_names = show_row_names, show_column_names = FALSE,
-    col = col_fun, column_split = split_cols,
+    col = col_fun,
     cluster_rows = F, cluster_columns = F,
     row_names_gp = grid::gpar(fontsize = rowm.fonts),  
     column_title_gp = gpar(fontsize = column_title_fonts), 
     column_title_rot = column_title_rot,
-    top_annotation=hm22ann)
+    top_annotation=hm22ann, left_annotation = left_ann)
   
   if (!highlight_pmhc.tcr){
     return(pmhc_subset_hmap)
@@ -420,274 +485,54 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
       pb <- txtProgressBar(min = 0, max = n_iter, style = 3, width = 50, char = "+") 
     }  
     
-    for (i in 1:n_iter){
-      cell_ids_i <- ann_subset_ordered$clone_id == tcr_pmhc[i,]$clone_id
-      cell_ids_i[is.na(cell_ids_i)] <- FALSE
-      cell_ids_i <- match(rownames(ann_subset_ordered)[cell_ids_i], colnames(pmhc_mat_ordered))
+    for (i in 1:n_iter) {
+      clone_i <- tcr_pmhc[i,]$clone_id
+      antigen_i <- tcr_pmhc[i,][[highlight_column]]
       
-      pmhc_ids_i <- which(rownames(pmhc_mat_ordered) == tcr_pmhc[i,][[highlight_column]])
-      pmhc_ids_i <- rep(pmhc_ids_i, length(cell_ids_i))
+      # Get indices of cells belonging to the current clonotype
+      cell_ids_i <- which(ann_subset_ordered$clone_id == clone_i)
+      if (length(cell_ids_i) == 0) next
       
-      decorate_heatmap_body("pmhc_subset_hmap", {
-        for (row in pmhc_ids_i) {
-          cols_in_row <- cell_ids_i
-          min_col <- min(cols_in_row)
-          max_col <- max(cols_in_row)
-          
-          x = (min_col - 1) / ncol(pmhc_mat_ordered)
-          width = (max_col - min_col + 1) / ncol(pmhc_mat_ordered)
-          
-          y = 1 - (row - 0.5) / nrow(pmhc_mat_ordered)
-          height = 1 / nrow(pmhc_mat_ordered)
-          
-          if (skip_bugged_frames & width > bugged_width){
-            next
-          }
-          
-          grid.rect(x = x, y = y, width = width, height = height, just = c("left", "center"), 
-                    gp = gpar(col = "green", lwd = 2, fill = NA))
+      # Find the min and max column indices corresponding to these cells
+      col_indices <- match(rownames(ann_subset_ordered)[cell_ids_i], colnames(pmhc_mat_ordered))
+      min_col <- min(col_indices)
+      max_col <- max(col_indices)
+      
+      # Find the row index of the antigen in the heatmap
+      pmhc_row <- which(rownames(pmhc_mat_ordered) == antigen_i)
+      if (length(pmhc_row) == 0) next  # Skip if antigen not found
+      if (length(pmhc_row) > 1) {
+        # Optionally, handle multiple rows (e.g. take the first or compute a combined region)
+        pmhc_row <- pmhc_row[1]
+      }
+      
+      # Draw one rectangle for the clonotype's antigen region
+      decorate_heatmap_body("pmhc_tcr_hmap", {
+        x = (min_col - 1) / ncol(pmhc_mat_ordered)
+        width = (max_col - min_col + 1) / ncol(pmhc_mat_ordered)
+        y = 1 - (pmhc_row - 0.5) / nrow(pmhc_mat_ordered)
+        height = 1 / nrow(pmhc_mat_ordered)
+        
+        if (skip_bugged_frames & width > bugged_width) {
+          return(NULL)
         }
+        
+        grid.rect(x = x, y = y, width = width, height = height,
+                  just = c("left", "center"), 
+                  gp = gpar(col = "green", lwd = lwd, fill = NA))
       })
+      
       if (verbose) setTxtProgressBar(pb, i)
     }
-    if (verbose) close(pb)
+  }
+  if (verbose) close(pb)
   }
 }
 
 
 
-pmhc_heatmap_old <- function(object, clones, patient=NULL, slot='counts', clones_order=NULL, split_cols=FALSE,
-                         hm_breaks = NULL, hm_palette=c("blue", "white", "red"), pmhc_palette=NULL, pmhc_order=NULL,
-                         condpalette=NULL, highlight_pmhc.tcr=F, stop_large_highlighting=T, rowm.fonts=8,  
-                         column_title_fonts = 10, column_title_rot = 45, use_original_order=T, clean_mat=F, 
-                         add_tcr_cluster=F, show_row_names=T, pmhc_subset=NULL, custom_annotations=c(), save_highligted_hm=F, saving_path,
-                         skip_bugged_frames=F, show_legend_ann=c(F, T, T) ,bugged_width=.6, max_cols=16000, verbose=T, ...){
-  
-  library(randomcoloR)
-  library(uniformly)
-  library(circlize)
-  library(ComplexHeatmap)
-  
-  if(length(clones) == 0) {
-    stop("list of clonotypes in `clone` argument is empty")
-  }
-  # Additional steps to ensure custom_annotations are part of the object's metadata
-  missing_cols <- setdiff(custom_annotations, colnames(object@meta.data))
-  if(length(missing_cols) > 0){
-    stop(paste("Missing columns in object's metadata:", paste(missing_cols, collapse=", ")))
-  }
-  
-  if(is.null(object@misc$pmhc)){
-    stop("Missing pmhc metadata in object@misc$pmhc")
-  }
-  
-  cells_subset <- Cells(object)[(object$clone_id %in% clones) & !is.na(object$clone_id)]
-  
-  if (!'pMHC_classification' %in% colnames(object@meta.data)){
-    object$pMHC_classification <- NA
-  }
-  
-  ann_columns <- c("clone_id", "pMHC_classification", custom_annotations)
-  ann_subset <- object@meta.data %>%
-    dplyr::select(all_of(ann_columns)) %>%
-    filter(row.names(.) %in% cells_subset) %>%
-    arrange(clone_id)
-  
-  table(ann_subset$clone_id)
-  
-  ann_subset$clone_id <- factor(ann_subset$clone_id, levels=clones[clones %in% ann_subset$clone_id] %>% unique())
-  
-  pat_pmhc <- object@misc$pmhc %>%
-    filter(!is.na(Sequence)) %>%
-    { if(!is.null(patient)) filter(., Patient == patient) else . } %>%
-    pull(Barcode)
-  
-  pat_pmhc <- pat_pmhc[pat_pmhc %in% rownames(object@assays$pMHC@counts)]
-  
-  pmhc_subset_ <- GetAssayData(object, layer = slot, assay = 'pMHC')
-  pmhc_subset_ <- pmhc_subset_[,cells_subset][pat_pmhc,]
-  
-  pmhc_subset_ann <- object@misc$pmhc %>%
-    filter(Barcode %in% row.names(pmhc_subset_)) %>%
-    { if(!is.null(patient)) filter(., Patient == patient) else . } %>%
-    as.data.frame() %>%
-    column_to_rownames('Barcode')
-  
-  rownames(pmhc_subset_) <- pmhc_subset_ann[rownames(pmhc_subset_),]$pmhc
-  
-  if (!is.null(pmhc_subset)){
-    pmhc_subset_ <- pmhc_subset_[rownames(pmhc_subset_) %in% pmhc_subset,] 
-  }
-  
-  ncl <- ann_subset$clone_id %>%unique() %>% length()
-  
-  clpalette <- get_random_grid_colors(ncl, seed=3)
-  
-  names(clpalette) <- ann_subset$clone_id %>% unique()
-  
-  if (is.null(pmhc_palette)){
-    palette_list <- list(clone_id = clpalette,
-                         condition = condpalette)
-  } else{
-    palette_list <- list(clone_id = clpalette,
-                         condition = condpalette,
-                         pmhc = pmhc_palette)
-  }
-  
-  if (!use_original_order){
-    ann_subset$clone_id <- factor(ann_subset$clone_id, 
-                                  levels=as.character(ann_subset$clone_id[order(ann_subset$epitope_type, ann_subset$pMHC_classification)]) %>% unique())
-    ann_subset <- ann_subset[order(ann_subset$epitope_type, ann_subset$clone_id, ann_subset$condition),]
-  } 
-  
-  pmhc_mat <- as.matrix(pmhc_subset_[, rownames(ann_subset)])
-  
-  if (clean_mat){
-    positive_bc <- ann_subset$pMHC_classification[ann_subset$pMHC_classification != 'Negative']
-    positive_bc <- positive_bc %>% unique() %>% 
-      strsplit(., ":", fixed = TRUE) %>% unlist() %>% unique()
-    pmhc_mat = pmhc_mat[positive_bc,]
-  }
-  
-  if (is.null(hm_breaks)){
-    if (slot == 'scale.data'){
-      hm_breaks <- c(-5, 0, 5)
-    } else {
-      hm_breaks <- c(0, 4, 10)
-    }
-  }
-  
-  col_fun = colorRamp2(hm_breaks, hm_palette)
-  
-  if (ncol(pmhc_subset_) > max_cols) {
-    set.seed(123) 
-    sampled_cols <- sample(colnames(pmhc_subset_), max_cols)
-    
-    pmhc_subset_ <- pmhc_subset_[, sampled_cols]
-    ann_subset <- ann_subset[sampled_cols,]
-    
-    message("Number of columns exceeds threshold. Data has been randomly sampled to ", max_cols, " columns.")
-  }
-    
-  if (is.null(clones_order)){
-    cells_order <- ann_subset %>% 
-      arrange(pMHC_classification, clone_id) %>%
-      rownames_to_column('cell_id') %>%
-      pull('cell_id')
-  } else {
-    cells_order <- ann_subset %>%
-      mutate(clone_order_factor = factor(clone_id, levels = clones_order)) %>%
-      arrange(clone_order_factor) %>%
-      dplyr::select(-clone_order_factor) %>% 
-      rownames_to_column('cell_id') %>%
-      pull(cell_id)
-  }
-  
-  ann_subset_ordered <- ann_subset[cells_order,]
-  pmhc_mat_ordered <- pmhc_mat[,cells_order]
-  
-  if (!is.null(pmhc_order)){
-    pmhc_mat_ordered <- pmhc_mat_ordered[pmhc_order,]
-  }
-  
-  custom_ann_list <- setNames(lapply(custom_annotations, function(cn) ann_subset[cells_order,][[cn]]), custom_annotations)
-  
-  ann_list <- list(
-    clone_id = ann_subset[cells_order,]$clone_id, 
-    pmhc = gsub(':', '\n', ann_subset[cells_order,]$pMHC_classification)
-  )
-  ann_list <- c(ann_list, custom_ann_list) # Combine lists
-  
-  hm22ann <- do.call(HeatmapAnnotation, c(ann_list, list(
-    col = palette_list, show_legend = show_legend_ann,
-    which = 'col',
-    annotation_width = unit(c(1, 4), 'cm'),
-    gap = unit(1, 'mm')
-  )))
-  
-  if (split_cols){
-    split_cols <- ann_subset[cells_order,]$clone_id
-  } else {
-    split_cols <- NULL
-  }
-  
-  pmhc_subset_hmap <- Heatmap(
-    pmhc_mat_ordered, name = "pmhc_subset_hmap",
-    show_row_names = show_row_names, show_column_names = FALSE,
-    col = col_fun, column_split = split_cols,
-    cluster_rows = F, cluster_columns = F,
-    row_names_gp = grid::gpar(fontsize = rowm.fonts),  
-    column_title_gp = gpar(fontsize = column_title_fonts), 
-    column_title_rot = column_title_rot,
-    top_annotation=hm22ann)
-  
-  if (!highlight_pmhc.tcr){
-    return(pmhc_subset_hmap)
-  } else {
-    if (length(clones) > 300 & stop_large_highlighting){
-      stop('highlighting more than 300 clones specificity usually crushes the session, \n
-           if you want to continue, set stop_large_highlighting=F')
-    }
-    if (!is.null(split_cols)){
-      stop('Highlightinh specificities in the clone splited heatmap is not supported')
-    }
-    
-    if (save_highligted_hm){
-      CairoJPEG(paste0(saving_path), width=1200, height=800, res=100)
-      grid.newpage()  # Ensure new page for the heatmap
-      draw(pmhc_subset_hmap)
-    } else {
-      draw(pmhc_subset_hmap)
-    }
-    
-    tcr_pmhc <- ann_subset_ordered %>%
-      dplyr::select(clone_id, pMHC_classification) %>%
-      filter(!is.na(pMHC_classification) & pMHC_classification != 'Negative') %>%
-      unique() %>%
-      separate_rows(pMHC_classification, sep=':')
-    
-    n_iter <- nrow(tcr_pmhc)
-    if (verbose){
-      pb <- txtProgressBar(min = 0,      # Minimum value of the progress bar
-                           max = n_iter, # Maximum value of the progress bar
-                           style = 3,    # Progress bar style (also available style = 1 and style = 2)
-                           width = 50,   # Progress bar width. Defaults to getOption("width")
-                           char = "+") 
-    }  
-      
-    for (i in 1:n_iter){
-      cell_ids_i <- ann_subset_ordered$clone_id == tcr_pmhc[i,]$clone_id
-      cell_ids_i[is.na(cell_ids_i)] <- FALSE
-      cell_ids_i <- match(rownames(ann_subset_ordered)[cell_ids_i], colnames(pmhc_mat_ordered))
-      
-      pmhc_ids_i <- which(rownames(pmhc_mat_ordered) == tcr_pmhc[i,]$pMHC_classification)
-      pmhc_ids_i <- rep(pmhc_ids_i, length(cell_ids_i))
-      
-      decorate_heatmap_body("pmhc_subset_hmap", {
-        for (row in pmhc_ids_i) {
-          cols_in_row <- cell_ids_i
-          min_col <- min(cols_in_row)
-          max_col <- max(cols_in_row)
-          
-          x = (min_col - 1) / ncol(pmhc_mat_ordered)
-          width = (max_col - min_col + 1) / ncol(pmhc_mat_ordered)
-          
-          y = 1 - (row - 0.5) / nrow(pmhc_mat_ordered)
-          height = 1 / nrow(pmhc_mat_ordered)
-          
-          if (skip_bugged_frames & width > bugged_width){
-            next
-          }
-          
-          grid.rect(x = x, y = y, width = width, height = height, just = c("left", "center"), 
-                    gp = gpar(col = "green", lwd = 2, fill = NA))
-        }
-      })
-      if (verbose) setTxtProgressBar(pb, i)
-    }
-    if (verbose) close(pb)
-  }
-}
+
+
 
 plot_smoothing_changes <- function(scaled, smoothed, raw_counts = NULL, 
                                    point_labels = NULL, pmhc, clone_id, title=NULL) {
@@ -733,7 +578,8 @@ plot_smoothing_changes <- function(scaled, smoothed, raw_counts = NULL,
     geom_point(data = data_expanded, aes(size = count), show.legend = FALSE) +  # Points sized by count
     labs(x = "State", y = "Value", title = "Changes Across States") +
     theme_minimal() +
-    theme(plot.title = element_text(hjust = 0.5)) +
+    theme(plot.title = element_text(hjust = 0.5),
+          plot.title.position = "plot") +
     ggtitle(title)
   
   
@@ -742,11 +588,11 @@ plot_smoothing_changes <- function(scaled, smoothed, raw_counts = NULL,
                        aes(label = label, hjust = -0.1), size = 3)
   }
   
-  print(p)
+  return(p)
 }
 
 plot_smoothing <- function(object, clone_id, pmhc, ...){
-  clone_cells <- rownames(object@meta.data[smoothable_cells,])[which(clone_assignments == clone_id)]
+  clone_cells <- Cells(object)[which(object$clone_id == clone_id)]
   
   barcode <- object@misc$pmhc$Barcode[object@misc$pmhc$pmhc == pmhc]
   
@@ -859,3 +705,151 @@ plot_vdj_segment_frequency <- function(data, chain = "beta", segment = "v_call",
     theme(axis.text.x = element_text(angle = 45, hjust = 1))
 }
 
+
+
+
+#' Plot TCR-pMHC Permutation Tests
+#'
+#' This function creates histograms for permutation tests and highlights, within simulated values per clone, where the observed clone value and stability lie.
+#'
+#' @param object A Seurat object containing TCR and pMHC data.
+#' @param clone The ID of the clonotype to analyze.
+#' @param assay The assay to use for retrieving data. Default is 'pMHC'.
+#' @param slot The slot to use for retrieving data. Default is 'data'.
+#' @param stab_z The stability threshold for determining non-zero UMI counts. Default is 1.
+#' @param n_permutations The number of permutations to perform for the test. Default is 1000.
+#'
+#' @return A combined ggplot object showing histograms of simulated means and stabilities for each pMHC, with observed values highlighted.
+#'
+#' @examples
+#' # Assuming `seurat_obj` is a Seurat object with relevant data
+#' plot_tcr_pmhc_permutation(seurat_obj, clone = 'clone_1')
+#'
+#' @export
+plot_tcr_pmhc_permutation <- function(object, clone, assay = 'pMHC', 
+                                      slot='data', stab_z=1, n_permutations=1000){
+  
+  library(patchwork)
+  
+  clone_coords <- which(object$clone_id == clone)
+  clone_size <- object$clone_size[object$clone_id == clone] %>% drop.na() %>% unique() 
+  
+  meta <- object@meta.data %>%
+    filter(clone_id == clone) %>% 
+    dplyr::select(pMHC_classification, pMHC_confidence, pMHC_pvalues) %>%
+    distinct() %>%
+    separate_rows(c(pMHC_classification, pMHC_confidence, pMHC_pvalues), sep = ':')
+  
+  if (sum(meta$pMHC_classification != 'Negative' | !is.na(meta$pMHC_classification)) == 0){
+    stop(paste0('clone ', clone, ' doesnt have an assign pmhc specificity'))
+  }
+  
+  pmhcs <- meta %>% pull(pMHC_classification)
+  bcs <- object@misc$pmhc %>% filter(pmhc %in% pmhcs) %>% pull(Barcode)
+  names(pmhcs) <- bcs
+  p_values <- meta %>% pull(pMHC_pvalues)
+  names(p_values) <- bcs
+  
+  pmhc_mat <- GetAssayData(object, assay = assay, layer=slot)[bcs,]
+  observed_means <- rowMeans(pmhc_mat[, clone_coords, drop=FALSE])
+  observed_stabs <- apply(pmhc_mat[, clone_coords, drop=FALSE], 1, function(x) mean(x > stab_z))
+  
+  simulated_means <- matrix(NA, nrow = nrow(pmhc_mat), ncol = n_permutations)
+  simulated_stabs <- matrix(NA, nrow = nrow(pmhc_mat), ncol = n_permutations)
+  
+  rownames(simulated_means) <- rownames(pmhc_mat)
+  rownames(simulated_stabs) <- rownames(pmhc_mat)
+  
+  for (i in 1:n_permutations) {
+    sampled_columns <- sample(ncol(pmhc_mat), clone_size, replace = FALSE)
+    simulated_means[, i] <- rowMeans(pmhc_mat[, sampled_columns, drop=FALSE])
+    simulated_stabs[, i] <- apply(pmhc_mat[, sampled_columns, drop=FALSE], 1, function(x) mean(x > stab_z))
+  }
+  
+  plot_list <- list()
+  
+  for (bc in rownames(simulated_means)) {
+    
+    current_means <- data.frame(value = simulated_means[bc, ])
+    current_obs_mean <- observed_means[bc]
+    current_stabs <- data.frame(value = simulated_stabs[bc, ])
+    current_obs_stab <- observed_stabs[bc]
+    
+    means_plot <- ggplot(current_means, aes(x = value)) + 
+      geom_histogram(binwidth = 0.1, color = "black", fill = "grey") +
+      geom_vline(xintercept = current_obs_mean, linetype = "dashed", color = "red", size = 2) +
+      labs(title = paste0('Simulated means\n', 
+                          'pmhc=', pmhcs[bc],
+                          '\nclone_id=', clone)) +
+      theme_minimal()
+    
+    stabs_plot <- ggplot(current_stabs, aes(x = value)) + 
+      geom_histogram(binwidth = 0.01, color = "black", fill = "blue") +
+      geom_vline(xintercept = current_obs_stab, linetype = "dashed", color = "green", size = 2) +
+      labs(title =  paste0('Simulated pos GEMs ratio',
+                           ',\n#GEMS=', clone_size,
+                           ', p_value = ', p_values[bc])) +
+      theme_minimal()
+    
+    combined_plot <- means_plot + stabs_plot + plot_layout(guides = 'collect') & theme(legend.position = "bottom")
+    plot_list[[bc]] <- combined_plot
+    
+  }
+  final_plot <- patchwork::wrap_plots(plot_list, ncol = 1)
+  final_plot 
+}
+
+
+#' Volcano Plot for pMHC-TCR Pairs
+#'
+#' This function creates a volcano plot using permutation p-values and confidence of pMHC-TCR pairs as an effect size metric.
+#'
+#' @param object A Seurat object containing TCR and pMHC data.
+#' @param conf_threshold The confidence threshold for highlighting significant points. Default is 0.5.
+#' @param pval_threshold The p-value threshold for highlighting significant points. Default is -log10(0.05).
+#'
+#' @return A ggplot object representing the volcano plot.
+#'
+#' @examples
+#' # Assuming `seurat_obj` is a Seurat object with relevant data
+#' volcano_plot <- pmhc_volcano_plot(seurat_obj)
+#' print(volcano_plot)
+#'
+#' @export
+pmhc_volcano_plot <- function(meta, conf_threshold=.5, pval_threshold=-log10(0.05)) {
+  # Convert confidence to log scale if needed
+  meta <- extract_pairs(object)
+  meta <- meta %>%
+    mutate(pMHC_confidence = as.numeric(pMHC_confidence)) %>%
+    mutate(pMHC_pvalues = as.numeric(pMHC_pvalues)) %>%
+    mutate(log_conf = log10(pMHC_confidence)) %>%
+    mutate(min10logp = -log10(pMHC_pvalues))         
+  
+  # Create the plot
+  plot <- ggplot(meta, aes(x = log_conf, y = min10logp)) +
+    geom_point(aes(color = (log_conf >= conf_threshold & pMHC_pvalues <= pval_threshold)), size = 2) +
+    scale_color_manual(values = c("grey", "red")) +
+    geom_vline(xintercept = conf_threshold, linetype = "dashed", color = "blue") +
+    geom_hline(yintercept = -log10(pval_threshold), linetype = "dashed", color = "blue") +
+    labs(
+      title = "Volcano Plot",
+      x = "Log10(Confidence)",
+      y = "-Log10(p-value)"
+    ) +
+    theme_minimal() +
+    theme(legend.position = "none")
+  
+  # Add text annotations for significant points
+  significant_points <- subset(meta, log_conf >= conf_threshold & pMHC_pvalues <= pval_threshold)
+  plot <- plot + 
+    geom_text_repel(
+      data = significant_points,
+      aes(label = pMHC_classification),
+      size = 3,
+      box.padding = 0.3,
+      point.padding = 0.3,
+      max.overlaps = 10
+    )
+  
+  return(plot)
+}
