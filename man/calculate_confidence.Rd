@@ -9,6 +9,7 @@ calculate_confidence(
   concordances,
   clone_size,
   deltas,
+  replace.na = T,
   alpha = 1,
   beta = 1,
   gamma = 1,

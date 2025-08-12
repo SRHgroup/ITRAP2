@@ -6,25 +6,15 @@
 \usage{
 smooth_pmhc(
   object,
-  best_params = NULL,
   assay = "pMHC",
+  cap_upper_quantiles = T,
   cl_size_thresh = 3,
   normalise = FALSE,
   span_val = 1,
+  replace_ones = F,
   degree_val = 1,
   family_val = "symmetric",
-  verbose = TRUE
-)
-
-smooth_pmhc(
-  object,
-  best_params = NULL,
-  assay = "pMHC",
-  cl_size_thresh = 3,
-  normalise = FALSE,
-  span_val = 1,
-  degree_val = 1,
-  family_val = "symmetric",
+  replacement_q = 0.85,
   verbose = TRUE
 )
 }
@@ -32,11 +22,13 @@ smooth_pmhc(
 \item{object}{(\code{Seurat}) A Seurat object that must be of the above described
 structure}
 
-\item{best_params}{(\code{list}) ignore it for now}
-
 \item{assay}{(\code{character}) name of the slot with pMHC counts, default "pMHC"}
 
+\item{cap_upper_quantiles}{(\code{bool}) whether to trim higher than .9 quantile values with .9 quantile}
+
 \item{cl_size_thresh}{(\code{numeric}) from what clone size a clone will be smoothed}
+
+\item{normalise}{(\code{bool}) parameter passed to LOESS}
 
 \item{span_val}{(\code{numeric}) value for span parameter in loess}
 
@@ -46,26 +38,18 @@ structure}
 
 \item{verbose}{whether to show a progress bar}
 
-\item{slot}{(\code{character}) within what clot to perform smoothing, we recommend to
+\item{best_params}{(\code{list}) ignore it for now
 smooth scaled by ScaleDataNoOutliers counts}
 }
 \value{
-(\code{Seurat}) with the ScaleData slot with scaled pMHC counts smoothed
-
 (\code{Seurat}) with the ScaleData slot with scaled pMHC counts smoothed
 }
 \description{
 Perform the smoothing of scaled pMHC counts for every big clone in your
 Seurat object. Your Seurat object is expected "clone_id" column in your meta.data
 with clonotype assigments.
-
-Perform the smoothing of scaled pMHC counts for every big clone in your
-Seurat object. Your Seurat object is expected "clone_id" column in your meta.data
-with clonotype assigments.
 }
 \examples{
-smooth_pmhc(object)
-
 smooth_pmhc(object)
 
 }

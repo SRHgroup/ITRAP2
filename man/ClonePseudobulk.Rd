@@ -10,7 +10,8 @@ ClonePseudobulk(
   slot = "scale.data",
   clone_col = "clone_id",
   z_score_threshold = 2,
-  filter_by_zscore = FALSE
+  filter_by_zscore = FALSE,
+  FUN = median
 )
 }
 \arguments{

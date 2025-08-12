@@ -4,7 +4,7 @@
 \alias{drop.na}
 \title{Drop NA Values from a Vector}
 \usage{
-drop.na(vec)
+drop.na(vec, drop.neg = F)
 }
 \arguments{
 \item{vec}{A vector of any type (numeric, character, etc.) from which \code{NA} values are to be removed.}

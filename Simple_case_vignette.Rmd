@@ -14,12 +14,13 @@ knitr::opts_chunk$set(dev='CairoPNG', fig.width=10, fig.height=6, dpi=300)
 
 ## R Markdown
 
-pmhcDenoiseR is a data denoising workflow for single-cell pMHC datasets. The workflow also assigns the 
-pMHC specificities to individual clonotypes. pmhcDenoiseR works with coupled single-cell pMHC counts with TCR clonotypes.
+ITRAP2 is a data denoising workflow for single-cell pMHC datasets. The workflow also assigns the 
+pMHC specificities to individual clonotypes. ITRAP2 works with coupled single-cell pMHC counts with TCR clonotypes.
 
 ### load libraries
 ```{r load_packages, message=FALSE, warning=FALSE}
 library(Seurat)
+#library(itrap2)
 library(pmhcDenoiseR)
 library(uniformly)
 library(tidyverse)
@@ -43,7 +44,7 @@ you can see that features aren't directly names as pMHC, sinse in some experient
 
 ```{r pmhc_annotation}
 
-viral_screen@misc$pmhc %>% head()
+viral_screen@misc$pmhc %>% head()       
 ```
 
 it will help to assign specificities in the @meta.data later on.
@@ -99,11 +100,11 @@ You can see that the pMHCs with the highest entropy level procude the most noise
 
 ## scaling
 
-So in next steps we can start to normalize and denoise the data, we apply speific way of mean centering and sd scaling, where means and sds are calculated, not taking outlines (|z|>3) into account. this approach is used, instead of typically used median centering and mad scaling, sinse in sparse single-cell datasets, medians and mads are often zeros.
+So in next steps we can start to normalize and denoise the data, we apply specific way of mean centering and sd scaling, where means and sds are calculated, not taking outlines (|z|>3) into account. this approach is used, instead of typically used median centering and mad scaling, since in sparse single-cell datasets, medians and mads are often zeros.
 
 We prefer to perform scaling on the whole dataset for better mean and sd estimation.
 ```{r message=FALSE, warning=FALSE}
-viral_screen <- ScaleDataNoOutliers(viral_screen, verbose = F) 
+viral_screen <- ScaleDataNoOutliers(viral_screen, verbose = F) # records scaled matrix into @assays$pMHC@data
 
 obj_sub <- subset(viral_screen, BC == 'BC390') 
 
@@ -111,30 +112,35 @@ pmhc_heatmap(object = obj_sub, slot = 'data', hm_breaks = c(-3, 0, 10),
              split_cols = T, rowm.fonts = 5, clones = clones, 
              show_row_names = T, clean_mat = F)
 ```
+
+Explore a single clone within scaled UMI counts space
+
 ```{r}
 pmhc_dist_per_clone(object = obj_sub, clone = '3487_2473', aggr_threshold = 10, slot = 'data')
 ```
-
 
 We can clearly see more clear signal, that we can further improve in the next step, which is smoothing each pMHC within each expanded clone, using local regression (loess). 
 
 ## smoothing
 
 ```{r message=FALSE, warning=FALSE}
-obj_sub <- smooth_pmhc(object = obj_sub, 
-                       family_val = 'symmetric', 
-                       verbose = F
+obj_sub <- smooth_pmhc(object = obj_sub, assay = 'pMHC', 
+                       cap_upper_quantiles = T, # clip huge outliers, turning them into the replacement quantile, default=T
+                       replacement_q = .85, # which quantile to use for the clipping
+                       replace_ones = T  # replace 1 UMI count with zero pre-smoothing
                        )
 ```
 
 and next we can start pairing TCRs with pMHCs, not for a small clone <3 gems we will not take into account pMHC with entropy higher than 0.7. This function will also calculate confidence score for each pMHC pair. Green frames highlight the assigned specificities
 
 ```{r message=FALSE, warning=FALSE}
-obj_sub <- assign_pmhc(obj_sub, 
-                       cl_size_thresh = 3, 
-                       entropy_thresh = 0.7,
-                       verbose = F)
+obj_sub <- assign_pmhc(object = obj_sub, assay = 'pMHC', slot = 'scale.data', 
+                       assignment = 'rosner', # use extreme alternatively
+                       rosner_alpha=.001, # from which alpha to assign the pMHC 
+                       assign_small_clones = T)
 ```
+
+We recommend adjusting this parameters for assign_pmhc, checking how your assignment look on the pMHC heatmap, in some datasets certain parameters fail, which you can only see from visualizing your assignments. For more cross-reactivity heavy datasets, try using extreme, instead of rosner assignments. If you feel like a lot of potential specificities are missed, try to change alpha in assign_pmhc. 
 
 ```{r}
 pmhc_heatmap(object = obj_sub, slot = 'scale.data', hm_breaks = c(-3, 0, 10), highlight_pmhc.tcr = T,
@@ -180,7 +186,7 @@ For the stability permutation test, we compare the observed stability (denoted a
 
 
 ```{r}
-p_value <- plot_tcr_pmhc_permutation(object = obj_sub, clonal_id = '3487_2473', assay = 'pMHC', slot = 'data')
+p_value <- plot_tcr_pmhc_permutation(object = obj_sub, clone = '3487_2473', assay = 'pMHC', slot = 'data')
 p_value
 ```
 

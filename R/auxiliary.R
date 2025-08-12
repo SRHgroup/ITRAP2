@@ -84,7 +84,12 @@ ClonePseudobulk <- function(object, assay="pMHC", slot="scale.data",
 #' # Output: c("a", "b", "d")
 #'
 #' @export
-drop.na <- function(vec){
+drop.na <- function(vec, drop.neg=F){
+  
+  if (drop.neg){
+    vec <- vec[vec!='Negative']
+  }
+  
   vec[!is.na(vec)]
 }
 
@@ -128,25 +133,24 @@ normalize_vector <- function(vec) {
 #' pairs_df <- extract_pairs(seurat_obj)
 #'
 #' @export
-extract_pairs <- function(object, custom_columns = NULL){
+extract_pairs <- function(object, include_negative = FALSE, custom_columns = NULL) {
   
   default_columns <- c("pMHC_classification", "pMHC_confidence", "pMHC_pvalues", "pMHC_wclone_pvalues",
-                       "clone_id", "junction_beta", "junction_alpha", "clone_id", 'clone_size',
+                       "clone_id", "junction_beta", "junction_alpha", "clone_id", "clone_size",
                        "v_call_beta", "c_call_beta", "j_call_beta", "d_call_beta",
                        "v_call_alpha", "c_call_alpha", "j_call_alpha", "d_call_alpha")
   
   all_columns <- c(default_columns, custom_columns)
   
-  return(
-    object@meta.data %>%
-      filter(pMHC_classification != 'Negative' & !is.na(pMHC_classification)) %>%
-      filter(productive_beta & productive_alpha) %>%
-      select(!!!syms(all_columns)) %>%
-      separate_rows(c(pMHC_classification, pMHC_confidence, pMHC_pvalues, pMHC_wclone_pvalues), sep = ':') %>%
-      mutate(HLA = gsub('_.+', '', pMHC_classification)) %>%
-      mutate(peptide = gsub('.+_', '', pMHC_classification)) %>%
-      mutate(tcr_pmhc = paste0(junction_beta, '_', junction_alpha, '_', peptide)) %>%
-      distinct()
-  )
+  object@meta.data %>%
+    { if (!include_negative) filter(., pMHC_classification != 'Negative' & !is.na(pMHC_classification)) else . } %>%
+    filter(productive_beta & productive_alpha) %>%
+    dplyr::select(!!!syms(all_columns)) %>%
+    separate_rows(c(pMHC_classification, pMHC_confidence, pMHC_pvalues, pMHC_wclone_pvalues), sep = ':') %>%
+    mutate(HLA = gsub('_.+', '', pMHC_classification)) %>%
+    mutate(peptide = gsub('.+_', '', pMHC_classification)) %>%
+    mutate(tcr_pmhc = paste0(junction_beta, '_', junction_alpha, '_', peptide)) %>%
+    distinct()
 }
+
 

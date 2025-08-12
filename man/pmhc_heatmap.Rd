@@ -10,10 +10,12 @@ pmhc_heatmap(
   patient = NULL,
   slot = "counts",
   clones_order = NULL,
-  split_cols = FALSE,
+  column_split_var = NULL,
+  split_rows = NULL,
   highlight_pmhc.tcr = F,
   hm_breaks = NULL,
   hm_palette = c("blue", "white", "red"),
+  clean_na_features = F,
   pmhc_palette = NULL,
   pmhc_order = NULL,
   condpalette = NULL,
@@ -23,7 +25,7 @@ pmhc_heatmap(
   rowm.fonts = 8,
   column_title_fonts = 10,
   column_title_rot = 45,
-  use_original_order = T,
+  annotation_colors = list(),
   clean_mat = F,
   add_tcr_cluster = F,
   show_row_names = T,
@@ -33,7 +35,10 @@ pmhc_heatmap(
   show_legend_ann = c(F, T, T),
   bugged_width = 0.6,
   max_cols = 16000,
+  left_ann_vars = NULL,
+  left_ann_palette = NULL,
   verbose = T,
+  lwd = 2,
   ...
 )
 }
@@ -65,8 +70,6 @@ pMHC and clone annotations.}
 
 \item{column_title_rot}{Rotation angle for the column title.}
 
-\item{use_original_order}{Logical; whether to use the original order of clones.}
-
 \item{clean_mat}{Logical; whether to remove 'Negative' classifications from the matrix.}
 
 \item{add_tcr_cluster}{Logical; whether to add TCR clustering information, if available.}
@@ -75,7 +78,11 @@ pMHC and clone annotations.}
 
 \item{pmhc_subset}{Optional; a subset of pMHCs to include in the heatmap.}
 
+\item{lwd}{thickness of the highliting frame}
+
 \item{...}{Additional arguments passed to the heatmap function.}
+
+\item{use_original_order}{Logical; whether to use the original order of clones.}
 }
 \value{
 A ComplexHeatmap object visualizing the specified pMHC distribution across clones. The heatmap

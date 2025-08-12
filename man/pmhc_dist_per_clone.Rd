@@ -15,6 +15,7 @@ pmhc_dist_per_clone(
   conc_fontsize = 8,
   dot_fontsize = 8,
   hm_fontsize = 8,
+  rel_height1 = 0.05,
   extra_title = NULL,
   heatmap_legend_side = "left",
   hm_legent_direction = "vertical",

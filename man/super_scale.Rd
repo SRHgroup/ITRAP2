@@ -5,8 +5,6 @@
 \title{Scale without outliers}
 \usage{
 super_scale(umi_matrix, outlier = 3, sd_fun = sd)
-
-super_scale(umi_matrix, outlier = 3, sd_fun = sd)
 }
 \arguments{
 \item{umi_matrix}{A numeric matrix (\code{matrix}).}
@@ -17,19 +15,12 @@ super_scale(umi_matrix, outlier = 3, sd_fun = sd)
 }
 \value{
 a mean ceatered and median scaled matrix (\code{matrix})
-
-a mean ceatered and median scaled matrix (\code{matrix})
 }
 \description{
 Performs scaling of the matrix iteratively,
 removing outliers from sd estimation
-
-Performs scaling of the matrix iteratively,
-removing outliers from sd estimation
 }
 \examples{
-super_scale(umi_matrix=mat)
-
 super_scale(umi_matrix=mat)
 
 }

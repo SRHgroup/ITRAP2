@@ -4,7 +4,7 @@
 \alias{extract_pairs}
 \title{Extract pMHC-TCR Pairs from Seurat Object}
 \usage{
-extract_pairs(object, custom_columns = NULL)
+extract_pairs(object, include_negative = FALSE, custom_columns = NULL)
 }
 \arguments{
 \item{object}{A Seurat object containing TCR and pMHC data.}

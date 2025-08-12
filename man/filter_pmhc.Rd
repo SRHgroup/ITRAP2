@@ -4,7 +4,12 @@
 \alias{filter_pmhc}
 \title{Filter pMHC Classifications Based on Confidence Scores}
 \usage{
-filter_pmhc(object, condition = NULL, condition_scope = NULL)
+filter_pmhc(
+  object,
+  condition = NULL,
+  condition_scope = NULL,
+  custom_column = c()
+)
 }
 \arguments{
 \item{object}{A Seurat object containing pMHC classification and confidence data within its \code{meta.data}.}

@@ -251,11 +251,12 @@ pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10, slot = 'counts
 #' 
 pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_order=NULL, column_split_var=NULL, split_rows=NULL,
                          highlight_pmhc.tcr=F, hm_breaks = NULL, hm_palette=c("blue", "white", "red"), clean_na_features=F,
-                         pmhc_palette=NULL, pmhc_order=NULL, condpalette=NULL, highlight_column="pMHC_classification", stop_large_highlighting=T, show_heatmap_legend=T, 
-                         rowm.fonts=8, column_title_fonts = 10, column_title_rot = 45, use_original_order=T, annotation_colors=list(),
-                         clean_mat=F, add_tcr_cluster=F, show_row_names=T, pmhc_subset=NULL, custom_annotations=c(), 
-                         skip_bugged_frames=F, show_legend_ann=c(F, T, T), bugged_width=.6, max_cols=16000, left_ann_vars=NULL, left_ann_palette=NULL,
-                         verbose=T, lwd=2, ...) {
+                         pmhc_palette=NULL, pmhc_order=NULL, condpalette=NULL, highlight_column="pMHC_classification", 
+                         stop_large_highlighting=T, show_heatmap_legend=T, rowm.fonts=8, column_title_fonts = 10, 
+                         column_title_rot = 45, annotation_colors=list(), clean_mat=F, add_tcr_cluster=F, 
+                         show_row_names=T, pmhc_subset=NULL, custom_annotations=c(), skip_bugged_frames=F, 
+                         show_legend_ann=c(F, T, T), bugged_width=.6, max_cols=16000, left_ann_vars=NULL, 
+                         left_ann_palette=NULL, verbose=T, lwd=2, ...) {
   
   library(randomcoloR)
   library(circlize)
@@ -276,7 +277,7 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
   ann_columns <- c("clone_id", highlight_column, custom_annotations)
   ann_subset <- object@meta.data %>%
     dplyr::select(all_of(ann_columns)) %>%
-    filter(row.names(.) %in% Cells(object)[object$clone_id %in% clones]) %>%
+    filter(clone_id %in% clones) %>%
     arrange(clone_id)
   
   ann_subset$clone_id <- factor(ann_subset$clone_id, levels=unique(clones[clones %in% ann_subset$clone_id]))
@@ -288,14 +289,12 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
   
   pat_pmhc <- pat_pmhc[pat_pmhc %in% rownames(object@assays$pMHC@counts)]
   
-  pmhc_subset_ <- GetAssayData(object, layer = slot, assay = 'pMHC')
+  pmhc_subset_ <- GetAssayData(object, layer = slot, assay = 'pMHC') %>% as.data.frame()
   pmhc_subset_ <- pmhc_subset_[,Cells(object)[object$clone_id %in% clones]][pat_pmhc,]
   
-  #pmhc_subset_ann <- object@misc$pmhc %>%
-  #  filter(Barcode %in% row.names(pmhc_subset_)) %>%
-  #  { if(!is.null(patient)) filter(., grepl(patient, Patient)) else . } %>%
-  #  as.data.frame() %>%
-  #  column_to_rownames('Barcode')
+  if (!all(rownames(ann_subset) %in% colnames(pmhc_subset_))){
+    stop('cells from given clonotypes are not in pmhc matrix, check if you supply right set of clones')
+  }
   
   bc_to_pmhc <- setNames(object@misc$pmhc$pmhc, object@misc$pmhc$Barcode)
   rownames(pmhc_subset_) <- recode(rownames(pmhc_subset_), !!!bc_to_pmhc)
@@ -305,8 +304,13 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
   }
   
   ncl <- ann_subset$clone_id %>% unique() %>% length()
-  clpalette <- get_random_grid_colors(ncl, seed=3)
-  names(clpalette) <- ann_subset$clone_id %>% unique()
+  
+  if (ncl == 1){
+    clpalette <- setNames('red' ,ann_subset$clone_id %>% unique())
+  } else {
+    clpalette <- get_random_grid_colors(ncl, seed=3)
+    names(clpalette) <- ann_subset$clone_id %>% unique()
+  }
   
   if (is.null(pmhc_palette)){
     palette_list <- list(clone_id = clpalette,
@@ -317,19 +321,13 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
                          pmhc = pmhc_palette)
   }
   
-  if (!use_original_order){
-    ann_subset$clone_id <- factor(ann_subset$clone_id, 
-                                  levels=as.character(ann_subset$clone_id[order(ann_subset$epitope_type, ann_subset[[highlight_column]])]) %>% unique())
-    ann_subset <- ann_subset[order(ann_subset$epitope_type, ann_subset$clone_id, ann_subset$condition),]
-  } 
-  
   pmhc_mat <- as.matrix(pmhc_subset_[, rownames(ann_subset)])
   
   if (clean_mat){
     positive_bc <- ann_subset[[highlight_column]][ann_subset[[highlight_column]] != 'Negative']
     positive_bc <- positive_bc %>% unique() %>% 
-      strsplit(., ":", fixed = TRUE) %>% unlist() %>% unique()
-    pmhc_mat = pmhc_mat[positive_bc,]
+      strsplit(., ":", fixed = TRUE) %>% unlist() %>% unique() %>% drop.na()
+    pmhc_mat = pmhc_mat[rownames(pmhc_mat) %in% positive_bc,]
   }
   
   if (is.null(hm_breaks)){
@@ -368,6 +366,7 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
   pmhc_mat_ordered <- pmhc_mat[,cells_order]
   
   if (!is.null(pmhc_order)){
+    pmhc_order <- pmhc_order[pmhc_order %in% rownames(pmhc_mat_ordered)] 
     pmhc_mat_ordered <- pmhc_mat_ordered[pmhc_order,]
   }
   
@@ -385,10 +384,10 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
     }
   }
   
-  # Default color palettes
-  ncl <- ann_subset_ordered$clone_id %>% unique() %>% length()
-  clpalette <- get_random_grid_colors(ncl, seed=3)
-  names(clpalette) <- ann_subset_ordered$clone_id %>% unique()
+  # Default color palettes redundant?
+  #ncl <- ann_subset_ordered$clone_id %>% unique() %>% length()
+  #clpalette <- get_random_grid_colors(ncl, seed=3)
+  #names(clpalette) <- ann_subset_ordered$clone_id %>% unique()
   
   #palette_list <- list(clone_id = clpalette, condition = condpalette, pmhc = pmhc_palette)
   palette_list <- c(palette_list, color_list)  # Merge custom colors
@@ -435,11 +434,14 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
         arrange(pmhc)
     }
     
-    left_ann_df <- left_ann_df  %>%
+    left_ann_df <- left_ann_df %>%
       select(all_of(c(left_ann_vars, 'pmhc'))) %>%
+      filter(!is.na(pmhc)) %>%
+      mutate(pmhc = make.unique(as.character(pmhc), sep = "_")) %>%
       column_to_rownames('pmhc')
     
-    left_ann <- rowAnnotation(df = left_ann_df, 
+    ####### CUSTOMIZE!!!!!!
+    left_ann <- rowAnnotation(df = left_ann_df[rownames(pmhc_mat_ordered),], 
                               col = left_ann_palette)
     
   } else {
@@ -526,8 +528,8 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
     }
   }
   if (verbose) close(pb)
-  }
 }
+
 
 
 
@@ -853,3 +855,4 @@ pmhc_volcano_plot <- function(meta, conf_threshold=.5, pval_threshold=-log10(0.0
   
   return(plot)
 }
+

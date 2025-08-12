@@ -2,29 +2,33 @@
 % Please edit documentation in R/scale_and_smooth.R
 \name{assign_pmhc}
 \alias{assign_pmhc}
-\title{Perform pMHC Assignment for Each Big Clone}
+\title{Perform pMHC Assignment for Each Clone}
 \usage{
 assign_pmhc(
   object,
   slot = "scale.data",
   assay = "pMHC",
+  clones_to_analyse = NULL,
   assignment = "rosner",
   params = "remove_topx",
-  remove_for_params = 3,
+  remove_for_params = 2,
   assign_small_clones = F,
   cl_size_thresh = 3,
   entropy_thresh = 1,
   kmax = 10,
   rosner_alpha = 0.01,
-  extreme_alpha = 0.01,
+  rosner_pval_dist = "t",
+  extreme_alpha = 0.001,
   delta_threshold = 1,
+  pseudobulk_fun = median,
   n_tests = 10,
-  p_alpha = 0.1,
-  predefined_extreme_params = NULL,
   extreme_type = "regular",
+  double_loc_scale = F,
   filter_by_zscore = FALSE,
   filter_by_zscore_big_clones = FALSE,
-  top_down = F,
+  adjust_permutation = FALSE,
+  adjust_test_within_clone = FALSE,
+  padj_method = "BH",
   z_score_threshold = 2,
   calculate_pvalue = TRUE,
   calculate_confidence_score = TRUE,
@@ -64,8 +68,6 @@ clones smaller than \code{cl_size_thresh} due to noise.}
 \item{delta_threshold}{(\code{numeric}) Threshold to separate background from specificity signal,
 recommended values between 0.7 and 1. Used in delta_gap assigment.}
 
-\item{predefined_extreme_params}{(\code{list} or \code{NULL}) Predefined extreme distribution parameters for \code{extreme_distribution} assignment.}
-
 \item{filter_by_zscore}{(\code{logical}) Whether to filter small clones by z-score threshold,
 assuming that the absense of any extreme values would result in no specificities, thus saving
 computational time.}
@@ -73,9 +75,6 @@ computational time.}
 \item{filter_by_zscore_big_clones}{(\code{logical}) Whether to filter large clones by z-score threshold,
 #' assuming that the absense of any extreme values would result in no specificities, thus saving
 computational time.}
-
-\item{top_down}{(\code{logical}) If \code{TRUE}, uses a top-down approach in delta gap assignment, if \code{FALSE} then uses bottom-up approach,
-that leads to lessstrict assigments, default is \code{FALSE}.}
 
 \item{z_score_threshold}{(\code{numeric}) z-score threshold for filtering clones.}
 
@@ -90,6 +89,11 @@ that leads to lessstrict assigments, default is \code{FALSE}.}
 \item{verbose}{(\code{logical}) If \code{TRUE}, displays progress information.}
 
 \item{...}{Additional arguments passed to internal functions.}
+
+\item{predefined_extreme_params}{(\code{list} or \code{NULL}) Predefined extreme distribution parameters for \code{extreme_distribution} assignment.}
+
+\item{top_down}{(\code{logical}) If \code{TRUE}, uses a top-down approach in delta gap assignment, if \code{FALSE} then uses bottom-up approach,
+that leads to lessstrict assigments, default is \code{FALSE}.}
 }
 \value{
 (\code{Seurat}) The modified Seurat object, with TCR-pMHC classification and scores added to \code{meta.data}.

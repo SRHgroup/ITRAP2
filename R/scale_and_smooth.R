@@ -479,7 +479,9 @@ adjust_pmhc_pvalues <- function(df, adjust_permutation, adjust_test_within_clone
   library(purrr)
   
   df_long <- df %>%
-    separate_rows(c(pMHC_classification, pMHC_pvalues, pMHC_wclone_pvalues, pMHC_confidence), sep=":")
+    separate_rows(c(pMHC_classification, pMHC_pvalues, 
+                    pMHC_wclone_pvalues, pMHC_confidence, 
+                    pMHC_deltas, pMHC_scaled_umis), sep=":")
   
   if (adjust_permutation) {
     df_long <- df_long %>%
@@ -552,7 +554,7 @@ adjust_pmhc_pvalues <- function(df, adjust_permutation, adjust_test_within_clone
 #'
 #' @export
 
-assign_pmhc <- function(object, slot='scale.data', assay='pMHC', 
+assign_pmhc <- function(object, slot='scale.data', assay='pMHC', clones_to_analyse=NULL,
                         assignment='rosner', params = 'remove_topx', remove_for_params = 2, assign_small_clones=F, 
                         cl_size_thresh=3, entropy_thresh=1, kmax=10, rosner_alpha=0.01, rosner_pval_dist='t',
                         extreme_alpha=0.001, delta_threshold = 1, pseudobulk_fun=median, n_tests=10, extreme_type = 'regular',
@@ -598,6 +600,11 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC',
   }
   
   clones <- object$clone_id[!is.na(object$clone_id)]
+  
+  if (!is.null(clones_to_analyse)){
+    clones <- clones[clones %in% clones_to_analyse]
+  }
+  
   big_clones <- names(table(clones)[table(clones) >= cl_size_thresh])
   
   clone_bulk <- NULL
@@ -617,6 +624,11 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC',
   
   if (assign_small_clones){
     small_clones <- object$clone_id[!object$clone_id %in% big_clones] %>% drop.na() %>% unique()
+    
+    if (!is.null(clones_to_analyse)){
+      small_clones <- small_clones[small_clones %in% clones_to_analyse]
+    }
+    
     single_gems <- ClonePseudobulk(object %>% subset(clone_id %in% small_clones), 
                                    assay = assay, clone_col = 'clone_id', 
                                    slot = slot, 
@@ -739,7 +751,7 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC',
       
       within_clone_pvalues <- round(extreme_p[which(extreme_p<extreme_alpha)], digits = 5)
     }
-
+    
     pmhc_mat <- GetAssayData(object, assay = 'pMHC', layer = 'data')[names(outliers),]
     
     if (is.null(dim(pmhc_mat))) {
@@ -766,13 +778,15 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC',
     
     clone_outliers[[colnames(clone_bulk)[i]]] <- list('confidence_scores'=confidence_scores[names(outliers)], 
                                                       'p_values'=p_values[names(outliers)],
-                                                      'within_clone_pvalues'=within_clone_pvalues)
+                                                      'within_clone_pvalues'=within_clone_pvalues,
+                                                      'deltas'=deltas,
+                                                      'scaled_umis'=scores[names(positives)])
     
     if (verbose) {
       setTxtProgressBar(pb, i)
     }
   }
-
+  
   if (verbose) {
     close(pb)
     cat('\nmerging TCR-pMHC information into objects @meta.data\n')
@@ -783,10 +797,14 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC',
     confidences <- clone_outliers[[x]]$confidence_scores
     p_values <- clone_outliers[[x]]$p_values
     wclone_pvalues <- clone_outliers[[x]]$within_clone_pvalues
+    deltas <- round(clone_outliers[[x]]$deltas, 3)
+    scaled_umis <- round(clone_outliers[[x]]$scaled_umis, 3)
     
     confidence_is_negative <- length(confidences) == 1 && confidences == "Negative"
     pvalue_is_negative <- length(p_values) == 1 && p_values == "Negative"
     wpvalue_is_negative <- length(wclone_pvalues) == 1 && wclone_pvalues == "Negative"
+    deltas_is_negative <- length(deltas) == 1 && deltas == "Negative"
+    scaled_umis_is_negative <- length(scaled_umis) == 1 && scaled_umis == "Negative"
     
     data.frame(clone_id = x,
                pMHC_classification = if (confidence_is_negative) "Negative" else 
@@ -796,7 +814,11 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC',
                pMHC_pvalues = if (pvalue_is_negative) 'Negative' else 
                  paste(clone_outliers[[x]]$p_values, collapse=":"),
                pMHC_wclone_pvalues = if (wpvalue_is_negative) 'Negative' else 
-                 paste(clone_outliers[[x]]$within_clone_pvalues, collapse=":")
+                 paste(clone_outliers[[x]]$within_clone_pvalues, collapse=":"),
+               pMHC_deltas = if (deltas_is_negative) 'Negative' else 
+                 paste(clone_outliers[[x]]$deltas, collapse=":"),
+               pMHC_scaled_umis = if (scaled_umis_is_negative) 'Negative' else 
+                 paste(clone_outliers[[x]]$scaled_umis, collapse=":")   
     )
   }))
   df$clone_id <- gsub('-', '_', df$clone_id)
@@ -808,11 +830,28 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC',
                               method=padj_method)
   }
   
-  object@meta.data <- object@meta.data %>%
-    tibble::rownames_to_column('row_id') %>%
-    dplyr::select(-matches('^(pMHC_classification|pMHC_confidence|pMHC_pvalues|pMHC_wclone_pvalues)$')) %>%
-    left_join(df, by = 'clone_id') %>%
-    tibble::column_to_rownames('row_id')
+  pmhc_cols <- '^(pMHC_classification|pMHC_confidence|pMHC_pvalues|pMHC_wclone_pvalues|pMHC_deltas|pMHC_scaled_umis)$'
+  
+  if (is.null(clones_to_analyse)){
+    object@meta.data <- object@meta.data %>%
+      tibble::rownames_to_column('row_id') %>%
+      dplyr::select(-matches(pmhc_cols)) %>%
+      left_join(df, by = 'clone_id') %>%
+      tibble::column_to_rownames('row_id')
+  } else {
+    old_metadata <- object@meta.data %>%
+      filter(!clone_id %in% clones_to_analyse)
+    
+    new_metadata <- object@meta.data %>%
+      filter(clone_id %in% clones_to_analyse) %>%
+      tibble::rownames_to_column('row_id') %>%
+      dplyr::select(-matches(pmhc_cols)) %>%
+      left_join(df, by = 'clone_id') %>%
+      tibble::column_to_rownames('row_id')
+    
+    metadata <- rbind(old_metadata, new_metadata)
+    object@meta.data <- metadata[Cells(object)]
+  }
   
   return(object)
 }

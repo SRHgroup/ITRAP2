@@ -9,7 +9,8 @@ rosnerTest2(
   k = 3,
   alpha = 0.05,
   warn = TRUE,
-  params = "iteratively",
+  pval_dist = "t",
+  params = "remove_topx",
   remove_for_params = 3
 )
 }
@@ -37,7 +38,10 @@ scale parameters, after fitting an extreme distribution within a clone. Location
 scale are estimated once, without updating it every iteration.
 \code{remove_topx} would remove top x most extreme z-scores from the clone, leaving
 every potential outliers out, sinse we don't expect more than 2-3 specificities
-per clone.}
+per clone.
+@param pval_dist what distribution type to use to calculate p value for R statistics
+\code{normal} pnorm function
+\code{t} pt function}
 
 \item{remove_for_params}{for running rosner test in remove_topx setting in \code{params}
 how much most extreme z-scores to remove, default is 3}

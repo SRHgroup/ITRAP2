@@ -19,6 +19,7 @@
 #' @export
 calc_entropy <- function(vec, quantiles, with_weights=FALSE) {
   
+  vec <- vec[!is.na(vec)]
   no0propo <- sum(vec!=0)/length(vec)
   if (no0propo < 0.1){
     return(0)
@@ -397,7 +398,7 @@ filter_pmhc <- function(object, condition = NULL, condition_scope = NULL, custom
   
   object@meta.data <- object@meta.data %>%
     rownames_to_column('rownames') %>%
-    select(-pMHC_classification, -pMHC_confidence, -pMHC_pvalues, -pMHC_wclone_pvalues) %>%
+    dplyr::select(-pMHC_classification, -pMHC_confidence, -pMHC_pvalues, -pMHC_wclone_pvalues) %>%
     left_join(meta_filtered_collapsed, by = "clone_id") %>%
     column_to_rownames('rownames') %>%
     arrange(match(rownames(.), Cells(object)))
@@ -487,7 +488,7 @@ recalculate_confidence <- function(object, assay='pMHC', slot='scale.data', ...)
       pMHC_confidence = ifelse(!is.na(pMHC_confidence_new), pMHC_confidence_new, pMHC_confidence),
       pMHC_classification = ifelse(!is.na(pMHC_classification_new), pMHC_classification_new, pMHC_classification)
     ) %>%
-    select(-c(pMHC_confidence_new, pMHC_classification_new))
+    dplyr::select(-c(pMHC_confidence_new, pMHC_classification_new))
     
   return(object)
 }

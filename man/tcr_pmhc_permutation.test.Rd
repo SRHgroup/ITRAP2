@@ -2,19 +2,8 @@
 % Please edit documentation in R/scale_and_smooth.R
 \name{tcr_pmhc_permutation.test}
 \alias{tcr_pmhc_permutation.test}
-\title{Perform permutation test for a specific pMHC-TCR pair}
+\title{Perform permutation test for pairs within assign_pmhc}
 \usage{
-tcr_pmhc_permutation.test(
-  pmhc_mat,
-  barcodes_to_test,
-  clone_coords,
-  stab_z = 1,
-  df = 4,
-  sample_permutation = "within_pmhc",
-  n_permutations = 1000,
-  p_adj_method = "BH"
-)
-
 tcr_pmhc_permutation.test(
   pmhc_mat,
   barcodes_to_test,
@@ -27,22 +16,30 @@ tcr_pmhc_permutation.test(
 )
 }
 \arguments{
-\item{sample_permutation}{whether to downsample values within the same pMHC,
-('within_pmhc') or across any random pMHC ('random')}
+\item{pmhc_mat}{(\code{matrix}) pMHC UMI scaled matrix}
+
+\item{barcodes_to_test}{(\code{character} vector) List of barcodes for specific multimers}
+
+\item{clone_coords}{(\code{integer} vector) Indices of the clone in the matrix}
+
+\item{stab_z}{(\code{numeric}) Z-score threshold to call the gem positive for a given pMHC}
+
+\item{df}{(\code{integer}) Degrees of freedom for Fisher method, uniting p-values, must be 4 for 2 tests}
+
+\item{sample_permutation}{(\code{character}) Whether to downsample values within the same pMHC
+(\code{"within_pmhc"}) or across any random pMHC (\code{"random"})}
+
+\item{n_permutations}{(\code{integer}) Number of generated pseudoclones}
+
+\item{p_adj_method}{(\code{character}) Method to use for multiple testing adjustment (e.g., \code{"BH"})}
 }
 \value{
-(\code{numeric})
-
-(\code{numeric})
+(\code{numeric} vector) Adjusted p-values for each barcode
 }
 \description{
-Perform permutation test for a specific pMHC-TCR pair
-
-Perform permutation test for a specific pMHC-TCR pair
+Perform permutation test for pairs within assign_pmhc
 }
 \examples{
-tcr_pmhc_permutation.test()
-
 tcr_pmhc_permutation.test()
 
 }
