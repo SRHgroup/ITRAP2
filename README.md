@@ -6,14 +6,21 @@ This repository is private until we post on bioRxiv. To install, collaborators i
 One-time setup (inside R)
 
 ```R
-# Install helpers if needed
+# One-time setup
 install.packages(c("usethis", "gitcreds", "devtools"), repos = "https://cloud.r-project.org")
 
-# 1) Open GitHub to create a token (choose Classic token with the "repo" scope)
-usethis::browse_github_token()
+# 1) Open GitHub's token page with sensible defaults (select at least the "repo" scope)
+usethis::create_github_token()
 
-# 2) Store the token in ~/.Renviron so R loads it automatically
-usethis::edit_r_environ()
+# 2) Store the token (securely) with your Git credential manager
+gitcreds::gitcreds_set()    # paste the token when prompted
+
+# -- For devtools/remotes installs from private repos,
+#    ensure a GITHUB_PAT is available in the R session:
+usethis::edit_r_environ()   # then add a line like:
+# GITHUB_PAT=ghp_your_token_here
+# Save, then restart R so it loads.
+
 ```
 
 In the file that opens, add a line like:

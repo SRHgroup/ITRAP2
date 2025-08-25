@@ -335,7 +335,7 @@ filter_pmhc <- function(object, condition = NULL, condition_scope = NULL, custom
         pMHC_classification_unf = pMHC_classification,
         pMHC_confidence_unf = pMHC_confidence,
         pMHC_pvalues_unf = pMHC_pvalues,
-        pMHC_wclone_pvalues_unf = pMHC_wclone_pvalues
+        pMHC_wclone_pvalues_unf = pMHC_wclone_pvalues,
         pMHC_deltas_unf = pMHC_deltas,
         pMHC_scaled_umis_unf = pMHC_scaled_umis
       )
