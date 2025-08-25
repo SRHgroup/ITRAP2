@@ -135,7 +135,8 @@ normalize_vector <- function(vec) {
 #' @export
 extract_pairs <- function(object, include_negative = FALSE, custom_columns = NULL) {
   
-  default_columns <- c("pMHC_classification", "pMHC_confidence", "pMHC_pvalues", "pMHC_wclone_pvalues",
+  default_columns <- c("pMHC_classification", "pMHC_confidence", "pMHC_pvalues", 
+                       "pMHC_wclone_pvalues", "pMHC_deltas", "pMHC_scaled_umis",
                        "clone_id", "junction_beta", "junction_alpha", "clone_id", "clone_size",
                        "v_call_beta", "c_call_beta", "j_call_beta", "d_call_beta",
                        "v_call_alpha", "c_call_alpha", "j_call_alpha", "d_call_alpha")
@@ -146,7 +147,8 @@ extract_pairs <- function(object, include_negative = FALSE, custom_columns = NUL
     { if (!include_negative) filter(., pMHC_classification != 'Negative' & !is.na(pMHC_classification)) else . } %>%
     filter(productive_beta & productive_alpha) %>%
     dplyr::select(!!!syms(all_columns)) %>%
-    separate_rows(c(pMHC_classification, pMHC_confidence, pMHC_pvalues, pMHC_wclone_pvalues), sep = ':') %>%
+    separate_rows(c(pMHC_classification, pMHC_confidence, pMHC_pvalues, 
+                    pMHC_wclone_pvalues, pMHC_deltas, pMHC_scaled_umis), sep = ':') %>%
     mutate(HLA = gsub('_.+', '', pMHC_classification)) %>%
     mutate(peptide = gsub('.+_', '', pMHC_classification)) %>%
     mutate(tcr_pmhc = paste0(junction_beta, '_', junction_alpha, '_', peptide)) %>%

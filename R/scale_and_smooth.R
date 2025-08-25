@@ -79,13 +79,14 @@ super_scale <- function(umi_matrix, outlier=3, sd_fun=sd) {
 #' ScaleDataNoOutliers(object)
 #'
 #' @export
-ScaleDataNoOutliers <- function(object, outlier = 3, return_params = FALSE, verbose = TRUE) {
+ScaleDataNoOutliers <- function(object, slot = 'counts', assay = 'pMHC', 
+                                outlier = 3, return_params = FALSE, verbose = TRUE) {
   
   if (!is(object, "Seurat")) {
     stop("The provided object is not a Seurat object.")
   }
   
-  umi_matrix <- object@assays$pMHC@counts
+  umi_matrix <- GetAssayData(object, assay = assay, layer = slot)
   iter0 <- apply(umi_matrix, 1, sd, na.rm = TRUE)
   mean_iter0 <- apply(umi_matrix, 1, mean, na.rm = TRUE)
   iter <- 0
@@ -712,11 +713,11 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', clones_to_analy
       outliers <- scores[scores >= gap_pos]
       
       background <- scores_interpolated[!names(scores_interpolated) %in% names(outliers)]
-      positives <- scores_interpolated[names(scores_interpolated) %in% names(outliers)]
+      positives <- scores_interpolated[names(scores_interpolated) %in% names(outliers)]  %>% round(., digits=3)
       
-      deltas <- positives - mean(background)
+      deltas <- positives - mean(background)%>% round(., digits=3)
       
-      within_clone_pvalues <- rosner$all.stats %>% filter(Outlier) %>% pull(P.Values) %>% rev() %>% round(., digits=5)
+      within_clone_pvalues <- rosner$all.stats %>% filter(Outlier) %>% pull(P.Values) %>% rev() %>% round(., digits=3)
       
     } else if (assignment == 'extreme_distribution') {
       
@@ -745,11 +746,11 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', clones_to_analy
       outliers <- scores[which(extreme_p<extreme_alpha)]
       
       background <- scores_interpolated[!names(scores_interpolated) %in% names(outliers)]
-      positives <- scores_interpolated[names(scores_interpolated) %in% names(outliers)]
+      positives <- scores_interpolated[names(scores_interpolated) %in% names(outliers)] %>% round(., digits=3)
       
-      deltas <- positives - mean(background)
+      deltas <- (positives - mean(background)) %>% round(., digits=3)
       
-      within_clone_pvalues <- round(extreme_p[which(extreme_p<extreme_alpha)], digits = 5)
+      within_clone_pvalues <- round(extreme_p[which(extreme_p<extreme_alpha)], digits = 3)
     }
     
     pmhc_mat <- GetAssayData(object, assay = 'pMHC', layer = 'data')[names(outliers),]
@@ -780,7 +781,7 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', clones_to_analy
                                                       'p_values'=p_values[names(outliers)],
                                                       'within_clone_pvalues'=within_clone_pvalues,
                                                       'deltas'=deltas,
-                                                      'scaled_umis'=scores[names(positives)])
+                                                      'scaled_umis'=scores[names(positives)] %>% round(., digits = 3))
     
     if (verbose) {
       setTxtProgressBar(pb, i)
@@ -797,8 +798,8 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', clones_to_analy
     confidences <- clone_outliers[[x]]$confidence_scores
     p_values <- clone_outliers[[x]]$p_values
     wclone_pvalues <- clone_outliers[[x]]$within_clone_pvalues
-    deltas <- round(clone_outliers[[x]]$deltas, 3)
-    scaled_umis <- round(clone_outliers[[x]]$scaled_umis, 3)
+    deltas <- clone_outliers[[x]]$deltas
+    scaled_umis <- clone_outliers[[x]]$scaled_umis
     
     confidence_is_negative <- length(confidences) == 1 && confidences == "Negative"
     pvalue_is_negative <- length(p_values) == 1 && p_values == "Negative"

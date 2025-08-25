@@ -295,3 +295,4 @@ extreme_outlier_test <- function(x, type='regular', double_loc_scale=F){
   
   return(pvalues)
 }
+

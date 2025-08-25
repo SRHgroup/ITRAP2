@@ -336,6 +336,8 @@ filter_pmhc <- function(object, condition = NULL, condition_scope = NULL, custom
         pMHC_confidence_unf = pMHC_confidence,
         pMHC_pvalues_unf = pMHC_pvalues,
         pMHC_wclone_pvalues_unf = pMHC_wclone_pvalues
+        pMHC_deltas_unf = pMHC_deltas,
+        pMHC_scaled_umis_unf = pMHC_scaled_umis
       )
   } else {
     object@meta.data <- object@meta.data %>%
@@ -343,7 +345,9 @@ filter_pmhc <- function(object, condition = NULL, condition_scope = NULL, custom
         pMHC_classification = pMHC_classification_unf,
         pMHC_confidence = pMHC_confidence_unf,
         pMHC_pvalues = pMHC_pvalues_unf,
-        pMHC_wclone_pvalues = pMHC_wclone_pvalues_inf
+        pMHC_wclone_pvalues = pMHC_wclone_pvalues_inf,
+        pMHC_deltas = pMHC_deltas_unf,
+        pMHC_scaled_umis = pMHC_scaled_umis_unf
       )
   }
   

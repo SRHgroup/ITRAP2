@@ -249,8 +249,8 @@ pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10, slot = 'counts
 #' @importFrom circlize colorRamp2
 #' @export
 #' 
-pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_order=NULL, column_split_var=NULL, split_rows=NULL,
-                         highlight_pmhc.tcr=F, hm_breaks = NULL, hm_palette=c("blue", "white", "red"), clean_na_features=F,
+pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'pMHC', clones_order=NULL, column_split_var=NULL, split_rows=NULL,
+                         highlight_pmhc.tcr=F, hm_breaks = NULL, hm_palette=c("blue", "white", "red"), clean_na_features=F, na_col = 'grey',
                          pmhc_palette=NULL, pmhc_order=NULL, condpalette=NULL, highlight_column="pMHC_classification", 
                          stop_large_highlighting=T, show_heatmap_legend=T, rowm.fonts=8, column_title_fonts = 10, 
                          column_title_rot = 45, annotation_colors=list(), clean_mat=F, add_tcr_cluster=F, 
@@ -289,7 +289,7 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
   
   pat_pmhc <- pat_pmhc[pat_pmhc %in% rownames(object@assays$pMHC@counts)]
   
-  pmhc_subset_ <- GetAssayData(object, layer = slot, assay = 'pMHC') %>% as.data.frame()
+  pmhc_subset_ <- GetAssayData(object, layer = slot, assay = assay) %>% as.data.frame()
   pmhc_subset_ <- pmhc_subset_[,Cells(object)[object$clone_id %in% clones]][pat_pmhc,]
   
   if (!all(rownames(ann_subset) %in% colnames(pmhc_subset_))){
@@ -458,7 +458,7 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', clones_ord
     show_heatmap_legend = show_heatmap_legend, 
     row_split = split_rows, column_split = split_cols,
     show_row_names = show_row_names, show_column_names = FALSE,
-    col = col_fun,
+    col = col_fun, na_col = na_col,
     cluster_rows = F, cluster_columns = F,
     row_names_gp = grid::gpar(fontsize = rowm.fonts),  
     column_title_gp = gpar(fontsize = column_title_fonts), 
