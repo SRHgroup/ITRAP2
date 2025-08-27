@@ -143,8 +143,12 @@ and next we can start pairing TCRs with pMHCs, not for a small clone <3 gems we 
 ```{r message=FALSE, warning=FALSE}
 obj_sub <- assign_pmhc(object = obj_sub, assay = 'pMHC', slot = 'scale.data', 
                        assignment = 'rosner', # use extreme alternatively
-                       rosner_alpha=.001, # from which alpha to assign the pMHC 
-                       assign_small_clones = T)
+                       rosner_alpha=.001, verbose = F, # from which alpha to assign the pMHC 
+                       rosner_pval_dist = 'normal', 
+                       remove_for_params=2, params='remove_topx', pseudobulk_fun=median,
+                       adjust_permutation = F, adjust_test_within_clone = T, 
+                       padj_method = 'BH', assign_small_clones = T)
+
 ```
 
 We recommend adjusting this parameters for assign_pmhc, checking how your assignment look on the pMHC heatmap, in some datasets certain parameters fail, which you can only see from visualizing your assignments. For more cross-reactivity heavy datasets, try using extreme, instead of rosner assignments. If you feel like a lot of potential specificities are missed, try to change alpha in assign_pmhc. 
@@ -154,7 +158,6 @@ pmhc_heatmap(object = obj_sub, slot = 'scale.data', hm_breaks = c(-3, 0, 10), hi
              clones = clones, show_row_names = T, clean_mat = F, verbose= F )
 
 ```
-
 
 ```{r}
 pmhc_dist_per_clone(object = obj_sub, clone = '3487_2473', aggr_threshold = 10, slot = 'scale.data')
@@ -177,19 +180,19 @@ Each TCR-pMHC interaction recieves a confidence score and p value. Confidence sc
 
 ### Permutation Test Procedure
 
-The p-value is obtained by performing two separate permutation tests for the \(pMHC\) value and its stability. These p-values are then combined using Fisher's method.
+The p-value is obtained by performing two separate permutation tests for the $p\mathrm{MHC}$ value and its stability. These p-values are then combined using Fisher’s method.
 
-For the \(pMHC\) value permutation test, we simulate \(n\) subsamples of the same size as the clonotype. We compare the observed \(pMHC\) value (denoted as \(V_{obs}\)) within the clone to the distribution of values obtained from simulated clones consisting of random cells.
+For the $p\mathrm{MHC}$ value permutation test, we simulate $n$ subsamples of the same size as the clonotype. We compare the observed $p\mathrm{MHC}$ value (denoted as $V_{\mathrm{obs}}$) within the clone to the distribution of values obtained from simulated clones consisting of random cells.
 
-\[
-\text{p-value}_{V} = \frac{1}{n} \sum_{i=1}^{n} \mathbf{1}(V_{sim,i} \geq V_{obs})
-\]
+$$
+\text{p-value}_V = \frac{1}{n}\sum_{i=1}^{n}\mathbf{1}\!\left(V_{\mathrm{sim},i} \ge V_{\mathrm{obs}}\right)
+$$
 
-For the stability permutation test, we compare the observed stability (denoted as \(S_{obs}\)) within the clone to the distribution of stability values obtained from simulated clones.
+For the stability permutation test, we compare the observed stability (denoted as $S_{\mathrm{obs}}$) within the clone to the distribution of stability values obtained from simulated clones.
 
-\[
-\text{p-value}_{S} = \frac{1}{n} \sum_{i=1}^{n} \mathbf{1}(S_{sim,i} \geq S_{obs})
-\]
+$$
+\text{p-value}_S = \frac{1}{n}\sum_{i=1}^{n}\mathbf{1}\!\left(S_{\mathrm{sim},i} \ge S_{\mathrm{obs}}\right)
+$$
 
 
 ```{r}
@@ -197,6 +200,17 @@ p_value <- plot_tcr_pmhc_permutation(object = obj_sub, clone = '3487_2473', assa
 p_value
 ```
 
+
+We can apply some filtering using the parameters, that are calculated during assign_pmhc step.
+pvalues filter would use column called pMHC p-value, that uses permitation test for filtering, other options include the use of 
+confidence score, and your within-clone assigment test, recorded as pMHC_wclone_pvalue. 
+
+```{r}
+filtered_obj <- filter_pmhc(obj_sub, condition = 'pvalues < 0.05') 
+pmhc_heatmap(object = filtered_obj, slot = 'scale.data', hm_breaks = c(-3, 0, 10), highlight_pmhc.tcr = T,
+             clones = clones, show_row_names = T, clean_mat = F, verbose= F )
+
+```
 
 this way loess regression minimises the within clone variability in the pMHC values, forcing outliers to follow the trend, thus denoising the data and making it easy to autocratically assign specificities to each clone. If clone has no signal for any pMHc in your panel, its labeled as negative. The pMHC assignments are stored in `pMHC_classification` column by default
 
@@ -206,6 +220,14 @@ obj_sub@meta.data %>%
   head(10)
 ```
 
+
+You can also record your TCR-pMHC pairs as a separate table using extract_pairs package
+
+```{r}
+pairs <- extract_pairs(filtered_obj, 
+                       custom_columns = c('BC', 'cdr3_beta', 'cdr3_alpha')) # can add custom columns
+head(pairs, 10)
+```
 
 ```{r session-info, echo=FALSE}
 sessionInfo()

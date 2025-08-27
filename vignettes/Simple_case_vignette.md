@@ -208,7 +208,10 @@ Green frames highlight the assigned specificities
 obj_sub <- assign_pmhc(object = obj_sub, assay = 'pMHC', slot = 'scale.data', 
                        assignment = 'rosner', # use extreme alternatively
                        rosner_alpha=.001, verbose = F, # from which alpha to assign the pMHC 
-                       assign_small_clones = T)
+                       rosner_pval_dist = 'normal', 
+                       remove_for_params=2, params='remove_topx', pseudobulk_fun=median,
+                       adjust_permutation = F, adjust_test_within_clone = T, 
+                       padj_method = 'BH', assign_small_clones = T)
 ```
 
 We recommend adjusting this parameters for assign_pmhc, checking how
@@ -272,6 +275,20 @@ p_value
 
 <img src="Simple_case_vignette_files/figure-gfm/unnamed-chunk-12-1.png" style="display: block; margin: auto;" />
 
+We can apply some filtering using the parameters, that are calculated
+during assign_pmhc step. pvalues filter would use column called pMHC
+p-value, that uses permitation test for filtering, other options include
+the use of confidence score, and your within-clone assigment test,
+recorded as pMHC_wclone_pvalue.
+
+``` r
+filtered_obj <- filter_pmhc(obj_sub, condition = 'pvalues < 0.05') 
+pmhc_heatmap(object = filtered_obj, slot = 'scale.data', hm_breaks = c(-3, 0, 10), highlight_pmhc.tcr = T,
+             clones = clones, show_row_names = T, clean_mat = F, verbose= F )
+```
+
+<img src="Simple_case_vignette_files/figure-gfm/unnamed-chunk-13-1.png" style="display: block; margin: auto;" />
+
 this way loess regression minimises the within clone variability in the
 pMHC values, forcing outliers to follow the trend, thus denoising the
 data and making it easy to autocratically assign specificities to each
@@ -297,6 +314,31 @@ obj_sub@meta.data %>%
     ## 1OS_AAATGCCTCTAAGCCA                  A2402_TYPVLEEMF            4.44        0.142
     ## 1OS_AACACGTCATGCCACG                             <NA>            <NA>         <NA>
 
+You can also record your TCR-pMHC pairs as a separate table using
+extract_pairs package
+
+``` r
+pairs <- extract_pairs(filtered_obj, 
+                       custom_columns = c('BC', 'cdr3_beta', 'cdr3_alpha')) # can add custom columns
+head(pairs, 10)
+```
+
+    ## # A tibble: 10 × 24
+    ##    pMHC_classification pMHC_confidence pMHC_pvalues pMHC_wclone_pvalues pMHC_deltas pMHC_scaled_umis clone_id junction_beta junction_alpha clone_size
+    ##    <chr>               <chr>           <chr>        <chr>               <chr>       <chr>            <chr>    <chr>         <chr>               <dbl>
+    ##  1 A0101_TIEVNSFSGY    2.21            0            0.14                0.031       7.667            1843_17… TGCAGTGCGAAG… TGTGTGGTGAACG…         12
+    ##  2 A0101_VTEHDTLLY     4.09            0            0                   0.998       235.372          1843_17… TGCAGTGCGAAG… TGTGTGGTGAACG…         12
+    ##  3 A0101_VTEHDTLLY     5.84            0            0                   1           112.795          17_2720  TGTGCCAGCAGT… TGTGCTCTGAGGG…         69
+    ##  4 B0801_QIKVRVDMV     3.33            0.005        0                   0.21        0.752            612_2091 TGTGCCAGCAGC… TGTGCAATGAGCG…          8
+    ##  5 B0801_QIKVRVDMV     3.33            0.005        0                   0.999       3.571            612_2091 TGTGCCAGCAGC… TGTGCAATGAGCG…          8
+    ##  6 B3501_SANNCTFEY     3.37            0.018        0.116               0.074       1.134            746_34   TGTGCCATCAGT… TGTGCTCTGATCG…         25
+    ##  7 C0702_CRVLCCYVL     4.82            0            0                   0.999       15.123           746_34   TGTGCCATCAGT… TGTGCTCTGATCG…         25
+    ##  8 C0702_FRCPRRFCF     5.57            0            0                   0.001       0.011            2749_21… TGTGCCAGCAGC… TGCGCTGTAGACT…         50
+    ##  9 C0702_FRCPRRFCF     5.57            0            0                   1           14.347           2749_21… TGTGCCAGCAGC… TGCGCTGTAGACT…         50
+    ## 10 B0801_ELKRKMMYM     4.96            0            0.082               0.687       16.619           3487_24… TGTGCCAGCAGT… TGTGCCCTAGGGG…         38
+    ## # ℹ 14 more variables: v_call_beta <chr>, c_call_beta <chr>, j_call_beta <chr>, d_call_beta <chr>, v_call_alpha <chr>, c_call_alpha <chr>,
+    ## #   j_call_alpha <chr>, d_call_alpha <lgl>, BC <fct>, cdr3_beta <chr>, cdr3_alpha <chr>, HLA <chr>, peptide <chr>, tcr_pmhc <chr>
+
     ## R version 4.3.1 (2023-06-16)
     ## Platform: x86_64-pc-linux-gnu (64-bit)
     ## Running under: Ubuntu 22.04.4 LTS
@@ -317,34 +359,33 @@ obj_sub@meta.data %>%
     ## [1] grid      stats     graphics  grDevices utils     datasets  methods   base     
     ## 
     ## other attached packages:
-    ##  [1] patchwork_1.3.0       RColorBrewer_1.1-3    circlize_0.4.16       randomcoloR_1.1.0.1   ComplexHeatmap_2.18.0 lubridate_1.9.3      
-    ##  [7] forcats_1.0.0         stringr_1.5.1         dplyr_1.1.3           purrr_1.0.2           readr_2.1.5           tidyr_1.3.1          
-    ## [13] tibble_3.2.1          ggplot2_3.5.1         tidyverse_2.0.0       uniformly_0.5.0       SeuratObject_5.0.1    Seurat_4.4.0         
-    ## [19] ITRAP2_0.1.0          EnvStats_3.0.0        shades_1.4.0         
+    ##  [1] patchwork_1.3.0       RColorBrewer_1.1-3    rlang_1.1.3           circlize_0.4.16       randomcoloR_1.1.0.1   EnvStats_3.0.0       
+    ##  [7] shades_1.4.0          ComplexHeatmap_2.18.0 lubridate_1.9.3       forcats_1.0.0         stringr_1.5.1         dplyr_1.1.3          
+    ## [13] purrr_1.0.2           readr_2.1.5           tidyr_1.3.1           tibble_3.2.1          ggplot2_3.5.1         tidyverse_2.0.0      
+    ## [19] uniformly_0.5.0       ITRAP2_0.1.0          SeuratObject_5.0.1    Seurat_4.4.0         
     ## 
     ## loaded via a namespace (and not attached):
     ##   [1] RcppAnnoy_0.0.22       splines_4.3.1          later_1.3.2            polyclip_1.10-6        lifecycle_1.0.4        doParallel_1.0.17     
-    ##   [7] rprojroot_2.0.4        globals_0.16.3         processx_3.8.6         lattice_0.22-6         MASS_7.3-60            magrittr_2.0.3        
-    ##  [13] plotly_4.10.4          rmarkdown_2.29         distillery_1.2-2       yaml_2.3.10            remotes_2.5.0          httpuv_1.6.12         
-    ##  [19] sctransform_0.4.1      spam_2.11-1            sp_2.1-1               sessioninfo_1.2.3      pkgbuild_1.4.6         spatstat.sparse_3.1-0 
-    ##  [25] reticulate_1.34.0      cowplot_1.1.3          pbapply_1.7-2          abind_1.4-8            pkgload_1.4.0          Rtsne_0.17            
-    ##  [31] BiocGenerics_0.48.1    rgl_1.3.17             IRanges_2.36.0         S4Vectors_0.40.2       ggrepel_0.9.4          irlba_2.3.5.1         
-    ##  [37] listenv_0.9.1          spatstat.utils_3.1-5   goftest_1.2-3          spatstat.random_3.4-1  fitdistrplus_1.2-2     parallelly_1.42.0     
-    ##  [43] commonmark_1.9.5       leiden_0.4.3.1         codetools_0.2-20       xml2_1.3.8             tidyselect_1.2.1       shape_1.4.6.1         
-    ##  [49] ramify_0.3.3           farver_2.1.2           matrixStats_1.2.0      stats4_4.3.1           base64enc_0.1-3        spatstat.explore_3.5-2
-    ##  [55] roxygen2_7.3.2         jsonlite_1.8.8         GetoptLong_1.0.5       ellipsis_0.3.2         progressr_0.15.1       ggridges_0.5.6        
-    ##  [61] survival_3.5-8         iterators_1.0.14       foreach_1.5.2          tools_4.3.1            ica_1.0-3              Rcpp_1.0.12           
-    ##  [67] glue_1.7.0             gridExtra_2.3          extRemes_2.2           xfun_0.51              usethis_3.1.0          withr_3.0.2           
-    ##  [73] fastmap_1.2.0          callr_3.7.6            digest_0.6.34          timechange_0.3.0       R6_2.6.1               mime_0.13             
-    ##  [79] colorspace_2.1-1       Cairo_1.6-2            scattermore_1.2        tensor_1.5             spatstat.data_3.1-8    utf8_1.2.4            
-    ##  [85] generics_0.1.3         data.table_1.15.0      httr_1.4.7             htmlwidgets_1.6.2      whisker_0.4.1          uwot_0.2.3            
-    ##  [91] pkgconfig_2.0.3        gtable_0.3.6           lmtest_0.9-40          htmltools_0.5.6.1      profvis_0.4.0          dotCall64_1.2         
-    ##  [97] clue_0.3-66            scales_1.3.0           png_0.1-8              spatstat.univar_3.1-4  knitr_1.50             rstudioapi_0.17.1     
-    ## [103] tzdb_0.5.0             reshape2_1.4.4         rjson_0.2.23           nlme_3.1-164           curl_6.2.1             cachem_1.1.0          
-    ## [109] zoo_1.8-13             GlobalOptions_0.1.2    KernSmooth_2.23-26     parallel_4.3.1         miniUI_0.1.1.1         desc_1.4.3            
-    ## [115] pillar_1.10.1          vctrs_0.6.4            RANN_2.6.2             urlchecker_1.0.1       promises_1.2.1         xtable_1.8-4          
-    ## [121] cluster_2.1.8.1        evaluate_1.0.3         magick_2.8.5           cli_3.6.2              compiler_4.3.1         rlang_1.1.3           
-    ## [127] crayon_1.5.3           future.apply_1.11.3    labeling_0.4.3         ps_1.9.0               plyr_1.8.9             fs_1.6.5              
-    ## [133] stringi_1.8.3          viridisLite_0.4.2      deldir_2.0-2           munsell_0.5.1          Lmoments_1.3-1         lazyeval_0.2.2        
-    ## [139] devtools_2.4.5         spatstat.geom_3.5-0    V8_6.0.2               Matrix_1.6-5           hms_1.1.3              future_1.34.0         
-    ## [145] shiny_1.8.0            pgnorm_2.0             ROCR_1.0-11            igraph_2.0.1.1         memoise_2.0.1
+    ##   [7] globals_0.16.3         lattice_0.22-6         MASS_7.3-60            magrittr_2.0.3         plotly_4.10.4          rmarkdown_2.29        
+    ##  [13] distillery_1.2-2       yaml_2.3.10            remotes_2.5.0          httpuv_1.6.12          sctransform_0.4.1      spam_2.11-1           
+    ##  [19] sp_2.1-1               sessioninfo_1.2.3      pkgbuild_1.4.6         spatstat.sparse_3.1-0  reticulate_1.34.0      cowplot_1.1.3         
+    ##  [25] pbapply_1.7-2          abind_1.4-8            pkgload_1.4.0          Rtsne_0.17             BiocGenerics_0.48.1    rgl_1.3.17            
+    ##  [31] IRanges_2.36.0         S4Vectors_0.40.2       ggrepel_0.9.4          irlba_2.3.5.1          listenv_0.9.1          spatstat.utils_3.1-5  
+    ##  [37] goftest_1.2-3          spatstat.random_3.4-1  fitdistrplus_1.2-2     parallelly_1.42.0      leiden_0.4.3.1         codetools_0.2-20      
+    ##  [43] xml2_1.3.8             tidyselect_1.2.1       shape_1.4.6.1          farver_2.1.2           matrixStats_1.2.0      stats4_4.3.1          
+    ##  [49] base64enc_0.1-3        spatstat.explore_3.5-2 roxygen2_7.3.2         jsonlite_1.8.8         GetoptLong_1.0.5       ellipsis_0.3.2        
+    ##  [55] progressr_0.15.1       ggridges_0.5.6         survival_3.5-8         iterators_1.0.14       foreach_1.5.2          tools_4.3.1           
+    ##  [61] ica_1.0-3              Rcpp_1.0.12            glue_1.7.0             gridExtra_2.3          xfun_0.51              extRemes_2.2          
+    ##  [67] usethis_3.1.0          withr_3.0.2            fastmap_1.2.0          digest_0.6.34          timechange_0.3.0       R6_2.6.1              
+    ##  [73] mime_0.13              colorspace_2.1-1       scattermore_1.2        Cairo_1.6-2            tensor_1.5             spatstat.data_3.1-8   
+    ##  [79] utf8_1.2.4             generics_0.1.3         data.table_1.15.0      httr_1.4.7             htmlwidgets_1.6.2      uwot_0.2.3            
+    ##  [85] pkgconfig_2.0.3        gtable_0.3.6           lmtest_0.9-40          htmltools_0.5.6.1      profvis_0.4.0          dotCall64_1.2         
+    ##  [91] clue_0.3-66            scales_1.3.0           png_0.1-8              spatstat.univar_3.1-4  knitr_1.50             rstudioapi_0.17.1     
+    ##  [97] tzdb_0.5.0             reshape2_1.4.4         rjson_0.2.23           curl_6.2.1             nlme_3.1-164           cachem_1.1.0          
+    ## [103] zoo_1.8-13             GlobalOptions_0.1.2    KernSmooth_2.23-26     parallel_4.3.1         miniUI_0.1.1.1         desc_1.4.3            
+    ## [109] pillar_1.10.1          vctrs_0.6.4            RANN_2.6.2             urlchecker_1.0.1       promises_1.2.1         xtable_1.8-4          
+    ## [115] cluster_2.1.8.1        evaluate_1.0.3         magick_2.8.5           cli_3.6.2              compiler_4.3.1         crayon_1.5.3          
+    ## [121] future.apply_1.11.3    labeling_0.4.3         plyr_1.8.9             fs_1.6.5               stringi_1.8.3          viridisLite_0.4.2     
+    ## [127] deldir_2.0-2           munsell_0.5.1          lazyeval_0.2.2         Lmoments_1.3-1         devtools_2.4.5         spatstat.geom_3.5-0   
+    ## [133] V8_6.0.2               Matrix_1.6-5           hms_1.1.3              future_1.34.0          shiny_1.8.0            pgnorm_2.0            
+    ## [139] ROCR_1.0-11            igraph_2.0.1.1         memoise_2.0.1
