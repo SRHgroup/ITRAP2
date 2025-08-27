@@ -7,6 +7,7 @@ output:
     toc: true
     toc_depth: 2
     html_preview: false
+    md_extensions: +tex_math_dollars+raw_tex
   rmarkdown::html_vignette: default   # optional: for R CMD build/check
 vignette: >
   %\VignetteIndexEntry{ITRAP2 vignette}
@@ -155,7 +156,7 @@ We recommend adjusting this parameters for assign_pmhc, checking how your assign
 
 ```{r}
 pmhc_heatmap(object = obj_sub, slot = 'scale.data', hm_breaks = c(-3, 0, 10), highlight_pmhc.tcr = T,
-             clones = clones, show_row_names = T, clean_mat = F, verbose= F )
+             clones_order = clones, clones = clones, show_row_names = T, clean_mat = F, verbose= F )
 
 ```
 
@@ -206,9 +207,9 @@ pvalues filter would use column called pMHC p-value, that uses permitation test 
 confidence score, and your within-clone assigment test, recorded as pMHC_wclone_pvalue. 
 
 ```{r}
-filtered_obj <- filter_pmhc(obj_sub, condition = 'pvalues < 0.05') 
+filtered_obj <- filter_pmhc(obj_sub, condition = 'pvalues < 0.1') 
 pmhc_heatmap(object = filtered_obj, slot = 'scale.data', hm_breaks = c(-3, 0, 10), highlight_pmhc.tcr = T,
-             clones = clones, show_row_names = T, clean_mat = F, verbose= F )
+             clones_order = clones, clones = clones, show_row_names = T, clean_mat = F, verbose= F )
 
 ```
 

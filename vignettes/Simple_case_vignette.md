@@ -223,7 +223,7 @@ potential specificities are missed, try to change alpha in assign_pmhc.
 
 ``` r
 pmhc_heatmap(object = obj_sub, slot = 'scale.data', hm_breaks = c(-3, 0, 10), highlight_pmhc.tcr = T,
-             clones = clones, show_row_names = T, clean_mat = F, verbose= F )
+             clones_order = clones, clones = clones, show_row_names = T, clean_mat = F, verbose= F )
 ```
 
 <img src="Simple_case_vignette_files/figure-gfm/unnamed-chunk-10-1.png" style="display: block; margin: auto;" />
@@ -282,9 +282,9 @@ the use of confidence score, and your within-clone assigment test,
 recorded as pMHC_wclone_pvalue.
 
 ``` r
-filtered_obj <- filter_pmhc(obj_sub, condition = 'pvalues < 0.05') 
+filtered_obj <- filter_pmhc(obj_sub, condition = 'pvalues < 0.1') 
 pmhc_heatmap(object = filtered_obj, slot = 'scale.data', hm_breaks = c(-3, 0, 10), highlight_pmhc.tcr = T,
-             clones = clones, show_row_names = T, clean_mat = F, verbose= F )
+             clones_order = clones, clones = clones, show_row_names = T, clean_mat = F, verbose= F )
 ```
 
 <img src="Simple_case_vignette_files/figure-gfm/unnamed-chunk-13-1.png" style="display: block; margin: auto;" />
@@ -359,16 +359,16 @@ head(pairs, 10)
     ## [1] grid      stats     graphics  grDevices utils     datasets  methods   base     
     ## 
     ## other attached packages:
-    ##  [1] patchwork_1.3.0       RColorBrewer_1.1-3    rlang_1.1.3           circlize_0.4.16       randomcoloR_1.1.0.1   EnvStats_3.0.0       
-    ##  [7] shades_1.4.0          ComplexHeatmap_2.18.0 lubridate_1.9.3       forcats_1.0.0         stringr_1.5.1         dplyr_1.1.3          
-    ## [13] purrr_1.0.2           readr_2.1.5           tidyr_1.3.1           tibble_3.2.1          ggplot2_3.5.1         tidyverse_2.0.0      
-    ## [19] uniformly_0.5.0       ITRAP2_0.1.0          SeuratObject_5.0.1    Seurat_4.4.0         
+    ##  [1] rlang_1.1.3           ITRAP2_0.1.0          patchwork_1.3.0       RColorBrewer_1.1-3    circlize_0.4.16       randomcoloR_1.1.0.1  
+    ##  [7] ComplexHeatmap_2.18.0 lubridate_1.9.3       forcats_1.0.0         stringr_1.5.1         dplyr_1.1.3           purrr_1.0.2          
+    ## [13] readr_2.1.5           tidyr_1.3.1           tibble_3.2.1          ggplot2_3.5.1         tidyverse_2.0.0       uniformly_0.5.0      
+    ## [19] SeuratObject_5.0.1    Seurat_4.4.0          EnvStats_3.0.0        shades_1.4.0         
     ## 
     ## loaded via a namespace (and not attached):
     ##   [1] RcppAnnoy_0.0.22       splines_4.3.1          later_1.3.2            polyclip_1.10-6        lifecycle_1.0.4        doParallel_1.0.17     
     ##   [7] globals_0.16.3         lattice_0.22-6         MASS_7.3-60            magrittr_2.0.3         plotly_4.10.4          rmarkdown_2.29        
-    ##  [13] distillery_1.2-2       yaml_2.3.10            remotes_2.5.0          httpuv_1.6.12          sctransform_0.4.1      spam_2.11-1           
-    ##  [19] sp_2.1-1               sessioninfo_1.2.3      pkgbuild_1.4.6         spatstat.sparse_3.1-0  reticulate_1.34.0      cowplot_1.1.3         
+    ##  [13] remotes_2.5.0          distillery_1.2-2       yaml_2.3.10            httpuv_1.6.12          sctransform_0.4.1      spam_2.11-1           
+    ##  [19] sessioninfo_1.2.3      pkgbuild_1.4.6         sp_2.1-1               spatstat.sparse_3.1-0  reticulate_1.34.0      cowplot_1.1.3         
     ##  [25] pbapply_1.7-2          abind_1.4-8            pkgload_1.4.0          Rtsne_0.17             BiocGenerics_0.48.1    rgl_1.3.17            
     ##  [31] IRanges_2.36.0         S4Vectors_0.40.2       ggrepel_0.9.4          irlba_2.3.5.1          listenv_0.9.1          spatstat.utils_3.1-5  
     ##  [37] goftest_1.2-3          spatstat.random_3.4-1  fitdistrplus_1.2-2     parallelly_1.42.0      leiden_0.4.3.1         codetools_0.2-20      
@@ -377,11 +377,11 @@ head(pairs, 10)
     ##  [55] progressr_0.15.1       ggridges_0.5.6         survival_3.5-8         iterators_1.0.14       foreach_1.5.2          tools_4.3.1           
     ##  [61] ica_1.0-3              Rcpp_1.0.12            glue_1.7.0             gridExtra_2.3          xfun_0.51              extRemes_2.2          
     ##  [67] usethis_3.1.0          withr_3.0.2            fastmap_1.2.0          digest_0.6.34          timechange_0.3.0       R6_2.6.1              
-    ##  [73] mime_0.13              colorspace_2.1-1       scattermore_1.2        Cairo_1.6-2            tensor_1.5             spatstat.data_3.1-8   
+    ##  [73] mime_0.13              colorspace_2.1-1       Cairo_1.6-2            scattermore_1.2        tensor_1.5             spatstat.data_3.1-8   
     ##  [79] utf8_1.2.4             generics_0.1.3         data.table_1.15.0      httr_1.4.7             htmlwidgets_1.6.2      uwot_0.2.3            
     ##  [85] pkgconfig_2.0.3        gtable_0.3.6           lmtest_0.9-40          htmltools_0.5.6.1      profvis_0.4.0          dotCall64_1.2         
     ##  [91] clue_0.3-66            scales_1.3.0           png_0.1-8              spatstat.univar_3.1-4  knitr_1.50             rstudioapi_0.17.1     
-    ##  [97] tzdb_0.5.0             reshape2_1.4.4         rjson_0.2.23           curl_6.2.1             nlme_3.1-164           cachem_1.1.0          
+    ##  [97] tzdb_0.5.0             reshape2_1.4.4         rjson_0.2.23           nlme_3.1-164           curl_6.2.1             cachem_1.1.0          
     ## [103] zoo_1.8-13             GlobalOptions_0.1.2    KernSmooth_2.23-26     parallel_4.3.1         miniUI_0.1.1.1         desc_1.4.3            
     ## [109] pillar_1.10.1          vctrs_0.6.4            RANN_2.6.2             urlchecker_1.0.1       promises_1.2.1         xtable_1.8-4          
     ## [115] cluster_2.1.8.1        evaluate_1.0.3         magick_2.8.5           cli_3.6.2              compiler_4.3.1         crayon_1.5.3          
