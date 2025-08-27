@@ -20,7 +20,6 @@ gitcreds::gitcreds_set()    # paste the token when prompted
 usethis::edit_r_environ()   # then add a line like:
 # GITHUB_PAT=ghp_your_token_here
 # Save, then restart R so it loads.
-
 ```
 
 In the file that opens, add a line like:

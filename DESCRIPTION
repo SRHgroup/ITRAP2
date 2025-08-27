@@ -1,6 +1,6 @@
-Package: pmhcDenoiseR
+Package: ITRAP2
 Title: pMHC denoising and pMHC-TCR assigment
-Version: 0.0.0.9000
+Version: 0.1.0
 Authors@R: 
     person("Grigorii", "Nos", , "nosgrigoriy@gmail.com", role = c("aut", "cre"),
            comment = c(ORCID = "0000-0002-8066-7424"))
