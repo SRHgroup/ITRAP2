@@ -3,17 +3,16 @@ title: "ITRAP2 vignette"
 author: "Grigorii Nos"
 date: "2025-07-15"
 output:
-  rmarkdown::github_document:
-    toc: true
-    toc_depth: 2
-    html_preview: false
-    md_extensions: +tex_math_dollars+raw_tex
-  rmarkdown::html_vignette: default   # optional: for R CMD build/check
+  md_document:
+    variant: gfm+tex_math_single_backslash+tex_math_dollars+raw_tex
+    preserve_yaml: true
+  rmarkdown::html_vignette: default
 vignette: >
   %\VignetteIndexEntry{ITRAP2 vignette}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
+
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message = FALSE, 
