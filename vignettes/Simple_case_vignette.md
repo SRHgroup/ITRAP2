@@ -7,7 +7,7 @@ Grigorii Nos
 - [visualise raw data](#visualise-raw-data)
   - [scaling](#scaling)
   - [smoothing](#smoothing)
-  - [pMHC-TCR pairing confidence](#pmhc-tcr-pairing-confidence)
+  - [pMHC–TCR pairing confidence](#pmhctcr-pairing-confidence)
 
 ## R Markdown
 
@@ -234,15 +234,20 @@ pmhc_dist_per_clone(object = obj_sub, clone = '3487_2473', aggr_threshold = 10, 
 
 <img src="Simple_case_vignette_files/figure-gfm/unnamed-chunk-11-1.png" style="display: block; margin: auto;" />
 
-## pMHC-TCR pairing confidence
+## pMHC–TCR pairing confidence
 
-Each TCR-pMHC interaction recieves a confidence score and p value.
-Confidence score is calculated as a sum of pmhc’s clonotype concordance,
-log of clone size, subtracted by the noisyness of pMHC.
+Each TCR–pMHC interaction receives a confidence score and p-value. The
+confidence score is computed from clonotype concordance, clone size, and
+pMHC noisiness:
 
 $$
 \mathbf{Confidence} = \alpha \cdot C + \beta \cdot \log(S + 1) - \gamma \cdot E
 $$
+
+- $\alpha, \beta, \gamma$: weights  
+- $C$: clonotype concordance  
+- $S$: clone size  
+- $E$: pMHC entropy
 
 ### Permutation Test Procedure
 
@@ -251,21 +256,18 @@ the $p\mathrm{MHC}$ value and its stability. These p-values are then
 combined using Fisher’s method.
 
 For the $p\mathrm{MHC}$ value permutation test, we simulate $n$
-subsamples of the same size as the clonotype. We compare the observed
-$p\mathrm{MHC}$ value (denoted as $V_{\mathrm{obs}}$) within the clone
-to the distribution of values obtained from simulated clones consisting
-of random cells.
+subsamples of the same size as the clonotype and compare the observed
+value $V_{\mathrm{obs}}$ to the simulated distribution:
 
 $$
-\text{p-value}_V = \frac{1}{n}\sum_{i=1}^{n}\mathbf{1}\!\left(V_{\mathrm{sim},i} \ge V_{\mathrm{obs}}\right)
+\text{p-value}_V = \frac{1}{n}\sum_{i=1}^{n}\mathbf{1}\!\left( V_{\mathrm{sim},i} \ge V_{\mathrm{obs}} \right)
 $$
 
 For the stability permutation test, we compare the observed stability
-(denoted as $S_{\mathrm{obs}}$) within the clone to the distribution of
-stability values obtained from simulated clones.
+$S_{\mathrm{obs}}$ to the simulated distribution:
 
 $$
-\text{p-value}_S = \frac{1}{n}\sum_{i=1}^{n}\mathbf{1}\!\left(S_{\mathrm{sim},i} \ge S_{\mathrm{obs}}\right)
+\text{p-value}_S = \frac{1}{n}\sum_{i=1}^{n}\mathbf{1}\!\left( S_{\mathrm{sim},i} \ge S_{\mathrm{obs}} \right)
 $$
 
 ``` r
