@@ -3,10 +3,12 @@ title: "ITRAP2 vignette"
 author: "Grigorii Nos"
 date: "2025-07-15"
 output:
+  rmarkdown::html_vignette:
+    toc: true
+    toc_depth: 2
   md_document:
-    variant: gfm+tex_math_single_backslash+tex_math_dollars+raw_tex
+    variant: gfm+tex_math_single_backslash+tex_math_dollars
     preserve_yaml: true
-  rmarkdown::html_vignette: default
 vignette: >
   %\VignetteIndexEntry{ITRAP2 vignette}
   %\VignetteEngine{knitr::rmarkdown}
@@ -15,9 +17,16 @@ vignette: >
 
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = FALSE, 
-                      warning = FALSE, fig.align = "center", 
-                      dev='CairoPNG', fig.width=10, fig.height=6, dpi=300)
+knitr::opts_chunk$set(
+  echo = TRUE, message = FALSE, warning = FALSE,
+  fig.align = "center", fig.width = 10, fig.height = 6, dpi = 300
+)
+if (requireNamespace("ragg", quietly = TRUE)) {
+  knitr::opts_chunk$set(dev = "ragg_png")
+} else {
+  options(bitmapType = "cairo")
+  knitr::opts_chunk$set(dev = "png", dev.args = list(type = "cairo"))
+}
 ```
 
 ## R Markdown

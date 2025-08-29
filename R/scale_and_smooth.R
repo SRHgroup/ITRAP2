@@ -193,6 +193,7 @@ cap_high_outliers <- function(values, upper_quantile = 0.95, replacement = "quan
 #' @param normalise (`bool`) parameter passed to LOESS
 #' @param cl_size_thresh (`numeric`) from what clone size a clone will be smoothed
 #' @param span_val (`numeric`) value for span parameter in loess
+#' @param replace_ones (`bool`) whether you want to replace 1 UMI count with 0
 #' @param degree_val (`numeric`) value for degree parameter in loess
 #' @param family_val (`character`) value for family parameter in loess
 #' @param verbose whether to show a progress bar

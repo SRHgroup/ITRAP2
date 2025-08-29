@@ -32,6 +32,8 @@ structure}
 
 \item{span_val}{(\code{numeric}) value for span parameter in loess}
 
+\item{replace_ones}{(\code{bool}) whether you want to replace 1 UMI count with 0}
+
 \item{degree_val}{(\code{numeric}) value for degree parameter in loess}
 
 \item{family_val}{(\code{character}) value for family parameter in loess}
