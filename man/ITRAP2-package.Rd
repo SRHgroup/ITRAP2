@@ -6,7 +6,7 @@
 \alias{ITRAP2-package}
 \title{ITRAP2: pMHC denoising and pMHC-TCR assigment}
 \description{
-pmhcDenoiseR is a data denoising workflow for single-cell pMHC datasets. The workflow also assigns the pMHC specificities to individual clonotypes. pmhcDenoiseR works with coupled single-cell pMHC counts with TCR clonotypes.
+ITRAP2 is a data denoising workflow for single-cell pMHC datasets. The workflow also assigns the pMHC specificities to individual clonotypes. ITRAP2 works with coupled single-cell pMHC counts with TCR clonotypes.
 }
 \author{
 \strong{Maintainer}: Grigorii Nos \email{nosgrigoriy@gmail.com} (\href{https://orcid.org/0000-0002-8066-7424}{ORCID})

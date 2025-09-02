@@ -130,13 +130,12 @@ score_pmhc_noise <- function(object, how=c('per_clone', 'pseudobulk'),
                           simplify = F)
   
   if (how == 'per_clone'){
-    # Initializes the progress bar
     if (verbose){
-      pb <- txtProgressBar(min = 0,      # Minimum value of the progress bar
-                           max = length(downsampled_clones), # Maximum value of the progress bar
-                           style = 3,    # Progress bar style (also available style = 1 and style = 2)
-                           width = 50,   # Progress bar width. Defaults to getOption("width")
-                           char = "+")   # Character used to create the bar
+      pb <- txtProgressBar(min = 0,      
+                           max = length(downsampled_clones), 
+                           style = 3,    
+                           width = 50,  
+                           char = "+")   
       index <- 0
       cat('\ncalculating pMHC entropy on per clone basis\n')
     }
@@ -295,121 +294,239 @@ calculate_confidence <- function(entropy, concordances, clone_size, deltas, repl
   return(round(confidence_scores, 2))
 }
 
-#' Filter pMHC Classifications Based on Confidence Scores
+#' Filter pMHC classifications and metrics in a Seurat object (including deltas and scaled_umis)
 #'
-#' This function filters pMHC classifications and confidence scores in a Seurat object's 
-#' metadata based on a specified confidence score cutoff. It supports reversible filtering 
-#' by creating and using "_unf" backups of the original classifications and confidence scores. 
-#' If the function has been run before, it will filter from the "_unf" backups, 
-#' allowing for adjustable cutoffs in subsequent analyses.
+#' Filters per-GEM pMHC assignments stored in `object@meta.data` using flexible
+#' logical conditions. Supports **reversible** filtering via `*_unf` backups,
+#' handles multi-assignment columns that are colon-separated, restores original
+#' `"Negative"` labels where appropriate, and warns if an overly strict filter
+#' discards most assignments.
 #'
-#' @param object A Seurat object containing pMHC classification and confidence data within its `meta.data`.
-#' @param condition string, what condition to apply to filter pMHC-TCR assigments
-#' @param condition_scope string, only apply filter to clones that meat a specific condition
+#' @param object A Seurat object with per-GEM metadata columns:
+#'   `pMHC_classification`, `pMHC_confidence`, `pMHC_pvalues`,
+#'   `pMHC_wclone_pvalues`, `pMHC_deltas`, `pMHC_scaled_umis`,
+#'   and clone-level columns `clone_id`, `clone_size`.
+#' @param condition `character(1)`. Row-wise logical expression that decides which
+#'   pMHC rows to **keep** (e.g., `"confidence > 0.9 & pvalues < 0.05 & deltas > 2"`).
+#'   You can use **bare tokens** without the `pMHC_` prefix; these are mapped to the
+#'   corresponding columns automatically:
+#'   - `confidence`   → `pMHC_confidence`
+#'   - `pvalues`      → `pMHC_pvalues`
+#'   - `wclone_pvalues` → `pMHC_wclone_pvalues`
+#'   - `classification` → `pMHC_classification`
+#'   - `deltas`       → `pMHC_deltas`
+#'   - `scaled_umis`  → `pMHC_scaled_umis`
+#'   Set to `NULL` to keep all rows (default).
+#' @param condition_scope `character(1)` or `NULL`. Optional logical expression that
+#'   defines the **scope** within which `condition` is enforced. Within scope, a row
+#'   is kept only if `condition` is TRUE; **outside** scope, rows are kept unchanged.
+#'   Accepts the same bare tokens as `condition`. Default `NULL` (apply `condition`
+#'   to all rows).
+#' @param custom_column `character()`. Optional vector of extra column names from
+#'   `meta.data` to carry through the long-format filtering and back-join. Missing
+#'   names are silently ignored. Default `character()`.
 #'
-#' @return The input Seurat object with `pMHC_classification` and `pMHC_confidence` 
-#'         in its `meta.data` filtered based on the specified `condition` and `condition_score`. 
-#'         The function also updates `object@commands` to indicate that pMHC filtering has been performed.
+#' @return The input Seurat object with the six pMHC columns updated (collapsed per
+#'   `clone_id` using `:`) according to the filter(s). The function:
+#'   1) Backs up originals to `*_unf` on first run and restores from `*_unf` on
+#'      subsequent runs (reversible workflow).
+#'   2) Drops `"Negative"` rows from filtering but, **after** filtering, restores
+#'      `"Negative"` to all pMHC fields for any GEM whose original (`*_unf`)
+#'      classification was `"Negative"` and did not receive new assignments.
+#'   3) Emits a **warning** if more than **80%** of pMHC rows are removed overall,
+#'      reporting how many clones lose all assignments.
+#'   4) Records `object@commands$pmhc_filter` to mark that filtering has been run.
 #'
 #' @details
-#' The function checks if `pmhc_filter` has been previously executed by inspecting `object@commands`.
-#' If not previously executed, original `pMHC_classification` and `pMHC_confidence` data are backed up 
-#' with an "_unf" suffix. If `pmhc_filter` was executed before, it starts with these "_unf" backups for filtering.
-#' Post-filtering, cells marked as 'Negative' are preserved as such, irrespective of the confidence score.
+#' **Data layout & splitting.** pMHC-related columns are expected to be
+#' colon-separated strings (e.g., multiple assignments per GEM). Internally,
+#' the function expands these columns with `tidyr::separate_rows()`, evaluates
+#' your `condition` (optionally inside `condition_scope`), filters rows, and
+#' then collapses results **per clone** by joining with `:` again.
+#'
+#' **Parsing & evaluation.** `condition` and `condition_scope` are parsed once
+#' with `rlang::parse_expr()` and evaluated in a dplyr data mask. Bare tokens are
+#' mapped to full column names (see @param condition). Typical numeric NA handling:
+#' - `pMHC_pvalues`, `pMHC_wclone_pvalues`: NAs are treated as `Inf` so comparisons
+#'   like `< 0.05` fail safely.
+#' - `pMHC_confidence`: NAs or values `<= 0` are treated as `-Inf` so comparisons
+#'   like `> 0` fail safely.
+#' - `pMHC_deltas`, `pMHC_scaled_umis`: left as numeric with NA; use `!is.na(...)`
+#'   in your expressions if required.
+#'
+#' **Reversibility.** On the first call, original columns are saved as
+#' `pMHC_*_unf`. On subsequent calls, filtering always starts from those backups,
+#' enabling you to adjust thresholds without cumulative degradation.
+#'
+#' **Negative preservation.** GEMs that were originally `"Negative"` are kept as
+#' `"Negative"` in all six pMHC columns after the join-back if they receive no new
+#' assignments through filtering (prevents unintended NAs).
+#'
+#' **Warnings on over-filtering.** If more than 80% of long-format pMHC rows are
+#' dropped by your filters, the function warns and reports the number of clones that
+#' lost all assignments—useful for diagnosing overly strict cut-offs.
 #'
 #' @examples
-#' filter_pmhc(object, condition = "pvalues < 0.05")
-#' filter_pmhc(object, condition = "pvalues < 0.05", condition_scope = "clone_size == 1")
+#' # Keep confident, significant, and strong-signal assignments
+#' obj <- filter_pmhc(
+#'   object,
+#'   condition = "confidence > 0.9 & pvalues < 0.05 & deltas > 2 & scaled_umis > 1"
+#' )
+#'
+#' # Apply only to singletons; outside scope keep rows unchanged
+#' obj <- filter_pmhc(
+#'   object,
+#'   condition = "pvalues < 0.01 & wclone_pvalues < 0.05",
+#'   condition_scope = "clone_size == 1"
+#' )
+#'
+#' # Carry extra columns through (if needed)
+#' obj <- filter_pmhc(
+#'   object,
+#'   condition = "confidence > 0.95",
+#'   custom_column = c("donor", "batch")
+#' )
 #'
 #' @export
-#object <- subset(obj, clone_id %in% weird)
-filter_pmhc <- function(object, condition = NULL, condition_scope = NULL, custom_column=c()) {
+filter_pmhc <- function(object, condition = NULL, condition_scope = NULL, custom_column = character()) {
   library(dplyr)
   library(tidyr)
   library(rlang)
+  library(stringr)
   
-  # Save the unfitted data for restoring
-  if (is.null(object@commands$pmhc_filter)) {
+   if (is.null(object@commands$pmhc_filter)) {
     object@meta.data <- object@meta.data %>%
       mutate(
         pMHC_classification_unf = pMHC_classification,
-        pMHC_confidence_unf = pMHC_confidence,
-        pMHC_pvalues_unf = pMHC_pvalues,
+        pMHC_confidence_unf     = pMHC_confidence,
+        pMHC_pvalues_unf        = pMHC_pvalues,
         pMHC_wclone_pvalues_unf = pMHC_wclone_pvalues,
-        pMHC_deltas_unf = pMHC_deltas,
-        pMHC_scaled_umis_unf = pMHC_scaled_umis
+        pMHC_deltas_unf         = pMHC_deltas,
+        pMHC_scaled_umis_unf    = pMHC_scaled_umis
       )
   } else {
     object@meta.data <- object@meta.data %>%
       mutate(
-        pMHC_classification = pMHC_classification_unf,
-        pMHC_confidence = pMHC_confidence_unf,
-        pMHC_pvalues = pMHC_pvalues_unf,
-        pMHC_wclone_pvalues = pMHC_wclone_pvalues_inf,
-        pMHC_deltas = pMHC_deltas_unf,
-        pMHC_scaled_umis = pMHC_scaled_umis_unf
+        pMHC_classification     = pMHC_classification_unf,
+        pMHC_confidence         = pMHC_confidence_unf,
+        pMHC_pvalues            = pMHC_pvalues_unf,
+        pMHC_wclone_pvalues     = pMHC_wclone_pvalues_unf,
+        pMHC_deltas             = pMHC_deltas_unf,
+        pMHC_scaled_umis        = pMHC_scaled_umis_unf
       )
   }
   
   meta <- object@meta.data
   
-  # Split columns into separate rows for filtering
+  custom_column <- intersect(custom_column, colnames(meta))
+  
   meta_long <- meta %>%
-    dplyr::select(pMHC_classification, pMHC_confidence, pMHC_pvalues, pMHC_wclone_pvalues, clone_id, clone_size) %>%
-    filter(!is.na(pMHC_classification) & pMHC_classification != 'Negative') %>%
-    separate_rows(pMHC_classification, pMHC_confidence, pMHC_pvalues, pMHC_wclone_pvalues, sep = ":") %>%
-    mutate(
-      pMHC_confidence = as.numeric(pMHC_confidence),
-      pMHC_pvalues = as.numeric(pMHC_pvalues),
-      pMHC_wclone_pvalues = as.numeric(pMHC_wclone_pvalues)
+    dplyr::select(
+      pMHC_classification, pMHC_confidence, 
+      pMHC_pvalues, pMHC_wclone_pvalues, 
+      pMHC_deltas, pMHC_scaled_umis,
+      clone_id, clone_size,
+      tidyselect::all_of(custom_column)
+    ) %>%
+    filter(!is.na(pMHC_classification) & pMHC_classification != "Negative") %>%
+    separate_rows(
+      pMHC_classification, pMHC_confidence, pMHC_pvalues, 
+      pMHC_wclone_pvalues, pMHC_deltas, pMHC_scaled_umis,
+      sep = ":"
     ) %>%
     mutate(
-      # Replace NAs with appropriate placeholders
-      pMHC_confidence = ifelse(is.na(pMHC_confidence) | pMHC_confidence <= 0, -Inf, pMHC_confidence),
-      pMHC_pvalues = ifelse(is.na(pMHC_pvalues), Inf, pMHC_pvalues),
-      pMHC_wclone_pvalues = ifelse(is.na(pMHC_wclone_pvalues), Inf, pMHC_wclone_pvalues) 
-    ) %>% unique()
+      pMHC_confidence     = suppressWarnings(as.numeric(pMHC_confidence)),
+      pMHC_pvalues        = suppressWarnings(as.numeric(pMHC_pvalues)),
+      pMHC_wclone_pvalues = suppressWarnings(as.numeric(pMHC_wclone_pvalues)),
+      pMHC_deltas         = suppressWarnings(as.numeric(pMHC_deltas)),
+      pMHC_scaled_umis    = suppressWarnings(as.numeric(pMHC_scaled_umis))
+    ) %>%
+    mutate(
+      pMHC_confidence     = ifelse(is.na(pMHC_confidence) | pMHC_confidence <= 0, -Inf, pMHC_confidence),
+      pMHC_pvalues        = ifelse(is.na(pMHC_pvalues),        Inf,  pMHC_pvalues),
+      pMHC_wclone_pvalues = ifelse(is.na(pMHC_wclone_pvalues), Inf,  pMHC_wclone_pvalues)
+        ) %>%
+    distinct()
   
-  # Define replacements ensuring exact word matching
   replacements <- c(
-    "\\bpvalues\\b" = "pMHC_pvalues",
-    "\\bwclone_pvalues\\b" = "pMHC_wclone_pvalues",
-    "\\bconfidence\\b" = "pMHC_confidence",
-    "\\bclassification\\b" = "pMHC_classification"
+    "\\bpvalues\\b"         = "pMHC_pvalues",
+    "\\bwclone_pvalues\\b"  = "pMHC_wclone_pvalues",
+    "\\bconfidence\\b"      = "pMHC_confidence",
+    "\\bclassification\\b"  = "pMHC_classification",
+    "\\bdeltas\\b"          = "pMHC_deltas",
+    "\\bscaled_umis\\b"     = "pMHC_scaled_umis"
   )
+  condition_parsed <- if (is.null(condition)) "TRUE" else str_replace_all(condition, replacements)
+  condition_scope_parsed <- if (is.null(condition_scope)) "TRUE" else str_replace_all(condition_scope, replacements)
   
-  # Perform replacements with exact word boundaries
-  condition_parsed <- stringr::str_replace_all(condition, replacements)
+  cond_expr  <- rlang::parse_expr(condition_parsed)        
+  scope_expr <- rlang::parse_expr(condition_scope_parsed)   
   
-  if (!is.null(condition_scope)) {
-    condition_scope_parsed <- stringr::str_replace_all(condition_scope, replacements)
+  filtered_long <- meta_long %>%
+    mutate(
+      .scope = !!scope_expr,
+      .valid = dplyr::if_else(.scope, dplyr::coalesce(!!cond_expr, FALSE), TRUE)
+    ) %>%
+    filter(.valid)
+  
+  # warning if we drop >80% of pMHC classifications 
+  baseline_n <- nrow(meta_long)
+  after_n    <- nrow(filtered_long)
+  if (baseline_n > 0) {
+    loss_prop <- (baseline_n - after_n) / baseline_n
+    if (loss_prop >= 0.80) {
+      per_clone <- filtered_long %>%
+        count(clone_id, name = "kept") %>%
+        right_join(count(meta_long, clone_id, name = "total"), by = "clone_id") %>%
+        mutate(kept = tidyr::replace_na(kept, 0L),
+               kept_ratio = kept / total)
+      n_all_dropped <- sum(per_clone$kept == 0)
+      
+      cond_txt  <- if (is.null(condition)) "NULL" else condition
+      scope_txt <- if (is.null(condition_scope)) "NULL" else condition_scope
+      
+      warning(sprintf(
+        "filter_pmhc(): %.1f%% of pMHC classifications were removed (kept %d / %d). \nClones with all assignments dropped: %d. \nConsider relaxing cutoffs. \ncondition='%s'; scope='%s'",
+        100 * loss_prop, after_n, baseline_n, n_all_dropped, cond_txt, scope_txt
+      ))
+    }
   }
   
-  meta_filtered_collapsed <- meta_long %>%
-    mutate(
-      scope_filter = if (!is.null(condition_scope)) eval(parse(text = condition_scope_parsed)) else TRUE,
-      valid = if_else(scope_filter, eval(parse(text = condition_parsed)), TRUE)
-    ) %>%
-    filter(valid) %>%
+  meta_filtered_collapsed <- filtered_long %>%
     group_by(clone_id) %>%
     summarise(
-      pMHC_classification = paste(pMHC_classification, collapse = ":"),
-      pMHC_confidence = paste(pMHC_confidence, collapse = ":"),
-      pMHC_pvalues = paste(pMHC_pvalues, collapse = ":"),
-      pMHC_wclone_pvalues = paste(pMHC_wclone_pvalues, collapse = ':'),
+      pMHC_classification     = paste(pMHC_classification,     collapse = ":"),
+      pMHC_confidence         = paste(pMHC_confidence,         collapse = ":"),
+      pMHC_pvalues            = paste(pMHC_pvalues,            collapse = ":"),
+      pMHC_wclone_pvalues     = paste(pMHC_wclone_pvalues,     collapse = ":"),
+      pMHC_deltas             = paste(pMHC_deltas,             collapse = ":"),
+      pMHC_scaled_umis        = paste(pMHC_scaled_umis,        collapse = ":"),
       .groups = "drop"
     )
   
   object@meta.data <- object@meta.data %>%
-    rownames_to_column('rownames') %>%
-    dplyr::select(-pMHC_classification, -pMHC_confidence, -pMHC_pvalues, -pMHC_wclone_pvalues) %>%
-    left_join(meta_filtered_collapsed, by = "clone_id") %>%
-    column_to_rownames('rownames') %>%
-    arrange(match(rownames(.), Cells(object)))
+    tibble::rownames_to_column("rownames") %>%
+    dplyr::select(
+      -pMHC_classification, -pMHC_confidence, -pMHC_pvalues, -pMHC_wclone_pvalues,
+      -pMHC_deltas, -pMHC_scaled_umis
+    ) %>%
+    dplyr::left_join(meta_filtered_collapsed, by = "clone_id") %>%
+    dplyr::mutate(
+      across(
+        .cols = c(pMHC_classification, pMHC_confidence, pMHC_pvalues,
+                  pMHC_wclone_pvalues, pMHC_deltas, pMHC_scaled_umis),
+        .fns  = ~ ifelse(pMHC_classification_unf == "Negative" & is.na(.x), "Negative", .x)
+      )
+    ) %>%
+    tibble::column_to_rownames("rownames") %>%
+    dplyr::arrange(match(rownames(.), SeuratObject::Cells(object)))
+  
+  object@commands$pmhc_filter <- list(time = Sys.time(),
+                                      condition = condition,
+                                      condition_scope = condition_scope)
   
   return(object)
 }
-
 
 is_single_na <- function(x) {
   if (length(x) == 1 && is.na(x)) {

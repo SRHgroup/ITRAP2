@@ -2,42 +2,116 @@
 % Please edit documentation in R/confidence_score.R
 \name{filter_pmhc}
 \alias{filter_pmhc}
-\title{Filter pMHC Classifications Based on Confidence Scores}
+\title{Filter pMHC classifications and metrics in a Seurat object (including deltas and scaled_umis)}
 \usage{
 filter_pmhc(
   object,
   condition = NULL,
   condition_scope = NULL,
-  custom_column = c()
+  custom_column = character()
 )
 }
 \arguments{
-\item{object}{A Seurat object containing pMHC classification and confidence data within its \code{meta.data}.}
+\item{object}{A Seurat object with per-GEM metadata columns:
+\code{pMHC_classification}, \code{pMHC_confidence}, \code{pMHC_pvalues},
+\code{pMHC_wclone_pvalues}, \code{pMHC_deltas}, \code{pMHC_scaled_umis},
+and clone-level columns \code{clone_id}, \code{clone_size}.}
 
-\item{condition}{string, what condition to apply to filter pMHC-TCR assigments}
+\item{condition}{\code{character(1)}. Row-wise logical expression that decides which
+pMHC rows to \strong{keep} (e.g., \code{"confidence > 0.9 & pvalues < 0.05 & deltas > 2"}).
+You can use \strong{bare tokens} without the \code{pMHC_} prefix; these are mapped to the
+corresponding columns automatically:
+\itemize{
+\item \code{confidence}   → \code{pMHC_confidence}
+\item \code{pvalues}      → \code{pMHC_pvalues}
+\item \code{wclone_pvalues} → \code{pMHC_wclone_pvalues}
+\item \code{classification} → \code{pMHC_classification}
+\item \code{deltas}       → \code{pMHC_deltas}
+\item \code{scaled_umis}  → \code{pMHC_scaled_umis}
+Set to \code{NULL} to keep all rows (default).
+}}
 
-\item{condition_scope}{string, only apply filter to clones that meat a specific condition}
+\item{condition_scope}{\code{character(1)} or \code{NULL}. Optional logical expression that
+defines the \strong{scope} within which \code{condition} is enforced. Within scope, a row
+is kept only if \code{condition} is TRUE; \strong{outside} scope, rows are kept unchanged.
+Accepts the same bare tokens as \code{condition}. Default \code{NULL} (apply \code{condition}
+to all rows).}
+
+\item{custom_column}{\code{character()}. Optional vector of extra column names from
+\code{meta.data} to carry through the long-format filtering and back-join. Missing
+names are silently ignored. Default \code{character()}.}
 }
 \value{
-The input Seurat object with \code{pMHC_classification} and \code{pMHC_confidence}
-in its \code{meta.data} filtered based on the specified \code{condition} and \code{condition_score}.
-The function also updates \code{object@commands} to indicate that pMHC filtering has been performed.
+The input Seurat object with the six pMHC columns updated (collapsed per
+\code{clone_id} using \code{:}) according to the filter(s). The function:
+\enumerate{
+\item Backs up originals to \verb{*_unf} on first run and restores from \verb{*_unf} on
+subsequent runs (reversible workflow).
+\item Drops \code{"Negative"} rows from filtering but, \strong{after} filtering, restores
+\code{"Negative"} to all pMHC fields for any GEM whose original (\verb{*_unf})
+classification was \code{"Negative"} and did not receive new assignments.
+\item Emits a \strong{warning} if more than \strong{80\%} of pMHC rows are removed overall,
+reporting how many clones lose all assignments.
+\item Records \code{object@commands$pmhc_filter} to mark that filtering has been run.
+}
 }
 \description{
-This function filters pMHC classifications and confidence scores in a Seurat object's
-metadata based on a specified confidence score cutoff. It supports reversible filtering
-by creating and using "_unf" backups of the original classifications and confidence scores.
-If the function has been run before, it will filter from the "_unf" backups,
-allowing for adjustable cutoffs in subsequent analyses.
+Filters per-GEM pMHC assignments stored in \code{object@meta.data} using flexible
+logical conditions. Supports \strong{reversible} filtering via \verb{*_unf} backups,
+handles multi-assignment columns that are colon-separated, restores original
+\code{"Negative"} labels where appropriate, and warns if an overly strict filter
+discards most assignments.
 }
 \details{
-The function checks if \code{pmhc_filter} has been previously executed by inspecting \code{object@commands}.
-If not previously executed, original \code{pMHC_classification} and \code{pMHC_confidence} data are backed up
-with an "_unf" suffix. If \code{pmhc_filter} was executed before, it starts with these "_unf" backups for filtering.
-Post-filtering, cells marked as 'Negative' are preserved as such, irrespective of the confidence score.
+\strong{Data layout & splitting.} pMHC-related columns are expected to be
+colon-separated strings (e.g., multiple assignments per GEM). Internally,
+the function expands these columns with \code{tidyr::separate_rows()}, evaluates
+your \code{condition} (optionally inside \code{condition_scope}), filters rows, and
+then collapses results \strong{per clone} by joining with \code{:} again.
+
+\strong{Parsing & evaluation.} \code{condition} and \code{condition_scope} are parsed once
+with \code{rlang::parse_expr()} and evaluated in a dplyr data mask. Bare tokens are
+mapped to full column names (see @param condition). Typical numeric NA handling:
+\itemize{
+\item \code{pMHC_pvalues}, \code{pMHC_wclone_pvalues}: NAs are treated as \code{Inf} so comparisons
+like \verb{< 0.05} fail safely.
+\item \code{pMHC_confidence}: NAs or values \verb{<= 0} are treated as \code{-Inf} so comparisons
+like \verb{> 0} fail safely.
+\item \code{pMHC_deltas}, \code{pMHC_scaled_umis}: left as numeric with NA; use \code{!is.na(...)}
+in your expressions if required.
+}
+
+\strong{Reversibility.} On the first call, original columns are saved as
+\verb{pMHC_*_unf}. On subsequent calls, filtering always starts from those backups,
+enabling you to adjust thresholds without cumulative degradation.
+
+\strong{Negative preservation.} GEMs that were originally \code{"Negative"} are kept as
+\code{"Negative"} in all six pMHC columns after the join-back if they receive no new
+assignments through filtering (prevents unintended NAs).
+
+\strong{Warnings on over-filtering.} If more than 80\% of long-format pMHC rows are
+dropped by your filters, the function warns and reports the number of clones that
+lost all assignments—useful for diagnosing overly strict cut-offs.
 }
 \examples{
-filter_pmhc(object, condition = "pvalues < 0.05")
-filter_pmhc(object, condition = "pvalues < 0.05", condition_scope = "clone_size == 1")
+# Keep confident, significant, and strong-signal assignments
+obj <- filter_pmhc(
+  object,
+  condition = "confidence > 0.9 & pvalues < 0.05 & deltas > 2 & scaled_umis > 1"
+)
+
+# Apply only to singletons; outside scope keep rows unchanged
+obj <- filter_pmhc(
+  object,
+  condition = "pvalues < 0.01 & wclone_pvalues < 0.05",
+  condition_scope = "clone_size == 1"
+)
+
+# Carry extra columns through (if needed)
+obj <- filter_pmhc(
+  object,
+  condition = "confidence > 0.95",
+  custom_column = c("donor", "batch")
+)
 
 }

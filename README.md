@@ -34,7 +34,7 @@ Sys.getenv("GITHUB_PAT")  # should not be empty
 
 Install the package
 ```R
-devtools::install_github("SRHgroup/pmhcDenoiseR")
+devtools::install_github("SRHgroup/ITRAP2")
 ```
 
 Minimal vignette: denoising and assignment
