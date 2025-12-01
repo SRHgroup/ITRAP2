@@ -249,7 +249,533 @@ pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10, slot = 'counts
 #' @importFrom circlize colorRamp2
 #' @export
 #' 
-pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'pMHC', clones_order=NULL, column_split_var=NULL, split_rows=NULL,
+pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'pMHC',
+                         clones_order=NULL, column_split_var=NULL, split_rows=NULL,
+                         highlight_pmhc.tcr=F, hm_breaks = NULL, hm_palette=c("blue", "white", "red"),
+                         clean_na_features=F, na_col = 'grey',
+                         pmhc_palette=NULL, pmhc_order=NULL,
+                         highlight_column="pMHC_classification", highlight_color='green',
+                         stop_large_highlighting=T, show_heatmap_legend=T, rowm.fonts=8, column_title_fonts = 10, 
+                         column_title_rot = 45, clean_mat=F, add_tcr_cluster=F, 
+                         show_row_names=T, pmhc_subset=NULL, 
+                         custom_annotations=c(), custom_ann_palette=list(),  
+                         show_legend_ann=FALSE, bugged_width=.6, max_cols=16000, 
+                         left_ann_vars=NULL, left_ann_palette=NULL,
+                         verbose=T, lwd=2, flip=FALSE,
+                         skip_bugged_frames=F, ...) {
+  
+  library(randomcoloR)
+  library(circlize)
+  library(ComplexHeatmap)
+  
+  if(length(clones) == 0) {
+    stop("list of clonotypes in `clone` argument is empty")
+  }
+  missing_cols <- setdiff(custom_annotations, colnames(object@meta.data))
+  if(length(missing_cols) > 0){
+    stop(paste("Missing columns in object's metadata:", paste(missing_cols, collapse=", ")))
+  }
+  
+  if (!highlight_column %in% colnames(object@meta.data)) {
+    object[[highlight_column]] <- NA
+  }
+  
+  cust_cols    <- intersect(custom_annotations, colnames(object@meta.data))
+  ann_columns  <- c("clone_id", highlight_column, cust_cols)
+  arrange_cols <- c("clone_id", cust_cols)
+  
+  ann_subset <- object@meta.data %>%
+    select(all_of(ann_columns)) %>%
+    filter(clone_id %in% clones) %>%
+    arrange(!!!syms(arrange_cols))
+  
+  ann_subset$clone_id <- factor(ann_subset$clone_id, levels=unique(clones[clones %in% ann_subset$clone_id]))
+  
+  pat_pmhc <- object@misc$pmhc %>%
+    filter(!is.na(Sequence)) %>%
+    { if(!is.null(patient)) filter(., grepl(patient, Patient)) else . } %>%
+    pull(Barcode)
+  
+  pat_pmhc <- pat_pmhc[pat_pmhc %in% rownames(object@assays$pMHC@counts)]
+  
+  pmhc_subset_ <- GetAssayData(object, layer = slot, assay = assay) %>% as.data.frame()
+  pmhc_subset_ <- pmhc_subset_[,Cells(object)[object$clone_id %in% clones]][pat_pmhc,]
+  
+  if (!all(rownames(ann_subset) %in% colnames(pmhc_subset_))){
+    stop('cells from given clonotypes are not in pmhc matrix, check if you supply right set of clones')
+  }
+  
+  bc_to_pmhc <- setNames(object@misc$pmhc$pmhc, object@misc$pmhc$Barcode)
+  rownames(pmhc_subset_) <- recode(rownames(pmhc_subset_), !!!bc_to_pmhc)
+  
+  if (!is.null(pmhc_subset)){
+    pmhc_subset_ <- pmhc_subset_[rownames(pmhc_subset_) %in% pmhc_subset,] 
+  }
+  
+  ncl <- ann_subset$clone_id %>% unique() %>% length()
+  
+  if (ncl == 1){
+    clpalette <- setNames('red' ,ann_subset$clone_id %>% unique())
+  } else {
+    clpalette <- get_random_grid_colors(ncl, seed=3)
+    names(clpalette) <- ann_subset$clone_id %>% unique()
+  }
+  
+  # start with clone palette always
+  color_list <- list(clone_id = clpalette)
+  
+  cust_cols_present <- intersect(custom_annotations, colnames(ann_subset))
+  
+  # helper: levels for each custom column = palette order (if supplied) else first-appearance
+  levels_for <- function(colname, x) {
+    pal <- custom_ann_palette[[colname]]
+    if (!is.null(pal)) {
+      lev <- trimws(names(pal))
+      if (is.null(lev)) stop(sprintf("custom_ann_palette[['%s']] must be a named vector", colname))
+      # keep only those actually present (preserve palette order)
+      lev[lev %in% unique(trimws(as.character(x)))]
+    } else {
+      # order of first appearance in this (already filtered) data
+      v <- trimws(as.character(x))
+      v[!duplicated(v)]
+    }
+  }
+  
+  if (is.null(clones_order)) {
+    cells_order <- ann_subset %>%
+      # coerce custom columns to ordered factors before arrange()
+      mutate(across(all_of(cust_cols_present),
+                    ~ factor(trimws(as.character(.x)), levels = levels_for(cur_column(), .x)))) %>%
+      arrange(clone_id, across(all_of(cust_cols_present))) %>%   # ← left-to-right matches legend
+      rownames_to_column('cell_id') %>%
+      pull('cell_id')
+  } else {
+    cells_order <- ann_subset %>%
+      mutate(clone_order_factor = factor(clone_id, levels = clones_order)) %>%
+      mutate(across(all_of(cust_cols_present),
+                    ~ factor(trimws(as.character(.x)), levels = levels_for(cur_column(), .x)))) %>%
+      arrange(clone_order_factor, across(all_of(cust_cols_present))) %>%
+      select(-clone_order_factor) %>%
+      rownames_to_column('cell_id') %>%
+      pull('cell_id')
+  }
+  
+  
+  pmhc_mat <- as.matrix(pmhc_subset_[, rownames(ann_subset)])
+  
+  if (clean_mat){
+    positive_bc <- ann_subset[[highlight_column]][ann_subset[[highlight_column]] != 'Negative']
+    positive_bc <- positive_bc %>% unique() %>% 
+      strsplit(., ":", fixed = TRUE) %>% unlist() %>% unique() %>% drop.na()
+    pmhc_mat = pmhc_mat[rownames(pmhc_mat) %in% positive_bc,]
+  }
+  
+  if (is.null(hm_breaks)){
+    if (slot == 'scale.data'){
+      hm_breaks <- c(-5, 0, 5)
+    } else {
+      hm_breaks <- c(0, 4, 10)
+    }
+  }
+  
+  col_fun = colorRamp2(hm_breaks, hm_palette)
+  
+  if (ncol(pmhc_subset_) > max_cols) {
+    set.seed(123) 
+    sampled_cols <- sample(colnames(pmhc_subset_), max_cols)
+    pmhc_subset_ <- pmhc_subset_[, sampled_cols]
+    ann_subset <- ann_subset[sampled_cols,]
+    message("Number of columns exceeds threshold. Data has been randomly sampled to ", max_cols, " columns.")
+  }
+  
+  if (is.null(clones_order)){
+    cells_order <- ann_subset %>% 
+      arrange(.data[[highlight_column]], clone_id) %>%
+      rownames_to_column('cell_id') %>%
+      pull('cell_id')
+  } else {
+    cells_order <- ann_subset %>%
+      mutate(clone_order_factor = factor(clone_id, levels = clones_order)) %>%
+      arrange(clone_order_factor) %>%
+      dplyr::select(-clone_order_factor) %>% 
+      rownames_to_column('cell_id') %>%
+      pull(cell_id)
+  }
+  
+  ann_subset_ordered <- ann_subset[cells_order,]
+  pmhc_mat_ordered <- pmhc_mat[,cells_order]
+  
+  # ---- one source of truth for levels (order) ----
+  cust_cols_present <- intersect(custom_annotations, colnames(ann_subset_ordered))
+  
+  # normalize text
+  for (cn in cust_cols_present) {
+    ann_subset_ordered[[cn]] <- trimws(as.character(ann_subset_ordered[[cn]]))
+  }
+  
+  # levels map: either palette order (if provided) or first-appearance order in data
+  level_map <- list()
+  for (cn in cust_cols_present) {
+    if (!is.null(custom_ann_palette[[cn]])) {
+      lev <- trimws(names(custom_ann_palette[[cn]]))
+      if (is.null(lev)) stop(sprintf("custom_ann_palette[['%s']] must be a named vector", cn))
+      # keep only categories actually present, but keep palette order
+      present <- unique(ann_subset_ordered[[cn]])
+      lev <- lev[lev %in% present]
+    } else {
+      # first-appearance order in the *ordered* data
+      v <- ann_subset_ordered[[cn]]
+      lev <- v[!duplicated(v)]
+    }
+    level_map[[cn]] <- lev
+    ann_subset_ordered[[cn]] <- factor(ann_subset_ordered[[cn]], levels = lev)
+  }
+  
+  # start with clone palette already in color_list
+  # build custom palettes aligned to levels
+  for (cn in cust_cols_present) {
+    lev <- level_map[[cn]]  # ordered!
+    pal <- custom_ann_palette[[cn]]
+    if (!is.null(pal)) {
+      names(pal) <- trimws(names(pal))
+      # auto-fill any missing keys just in case (preserves lev order)
+      missing <- setdiff(lev, names(pal))
+      if (length(missing) > 0) {
+        pal <- c(pal, setNames(randomcoloR::distinctColorPalette(length(missing)), missing))
+        warning(sprintf("custom_ann_palette[['%s']] lacked colors for: %s (auto-assigned).",
+                        cn, paste(missing, collapse = ", ")))
+      }
+      color_list[[cn]] <- pal[lev]
+    } else {
+      color_list[[cn]] <- setNames(randomcoloR::distinctColorPalette(length(lev)), lev)
+    }
+  }
+  
+  # legend order control (applies to both HeatmapAnnotation and rowAnnotation)
+  ann_legend_param <- lapply(cust_cols_present, function(cn) {
+    list(at = level_map[[cn]], labels = level_map[[cn]])
+  })
+  names(ann_legend_param) <- cust_cols_present
+  
+  
+  if (!is.null(pmhc_order)){
+    pmhc_order <- pmhc_order[pmhc_order %in% rownames(pmhc_mat_ordered)] 
+    pmhc_mat_ordered <- pmhc_mat_ordered[pmhc_order,]
+  }
+  
+  custom_ann_list <- setNames(
+    lapply(cust_cols_present, function(cn) ann_subset_ordered[[cn]]),
+    cust_cols_present
+  )
+  
+  ann_list <- c(
+    list(clone_id = ann_subset_ordered$clone_id),
+    custom_ann_list
+  )
+  
+  hm22ann <- do.call(HeatmapAnnotation, c(
+    ann_list,
+    list(
+      col = color_list,
+      which = "col",
+      show_legend = rep(show_legend_ann, length.out = length(ann_list)),
+      # give each track the same width to avoid mismatches
+      annotation_width = unit(rep(4, length(ann_list)), "mm"),
+      gap = unit(1, "mm")
+    )
+  ))
+  
+  if (!is.null(column_split_var)){
+    split_cols <- ann_subset[cells_order,][[column_split_var]]
+  } else {
+    split_cols <- NULL
+  }
+  
+  if (!is.null(left_ann_vars)){
+    left_ann_df <- object@misc$pmhc
+    
+    pats <- object$Patient[object$clone_id %in% clones] %>% unique()
+    if (length(pats) == 1){
+      left_ann_df <- left_ann_df %>%
+        tidyr::separate_rows(Patient, sep=':') %>% dplyr::filter(Patient %in% pats) %>% dplyr::distinct()
+    }
+    
+    if (!is.null(pmhc_subset)){
+      left_ann_df <- left_ann_df %>% dplyr::filter(pmhc %in% pmhc_subset)
+    }
+    
+    if (!is.null(pmhc_order)){
+      left_ann_df <- left_ann_df %>%
+        dplyr::mutate(pmhc = factor(pmhc, levels = pmhc_order)) %>%
+        dplyr::arrange(pmhc)
+    }
+    
+    left_ann_df <- left_ann_df %>%
+      dplyr::select(dplyr::all_of(c(left_ann_vars, 'pmhc'))) %>%
+      dplyr::filter(!is.na(pmhc)) %>%
+      dplyr::mutate(pmhc = make.unique(as.character(pmhc), sep = "_"))
+    
+    # --- CLEAN & VALIDATE VALUES FOR EACH LEFT ANNOTATION ---
+    for (ann_col in left_ann_vars) {
+      # trim spaces + force character
+      left_ann_df[[ann_col]] <- trimws(as.character(left_ann_df[[ann_col]]))
+      
+      # if a palette is provided for this column, ensure perfect name match
+      if (!is.null(left_ann_palette) && !is.null(left_ann_palette[[ann_col]])) {
+        pal_names <- names(left_ann_palette[[ann_col]])
+        if (is.null(pal_names)) {
+          stop(sprintf("left_ann_palette[['%s']] must be a named vector", ann_col))
+        }
+        
+        present_vals <- sort(unique(na.omit(left_ann_df[[ann_col]])))
+        
+        # warn if unseen categories (will be mapped automatically by ComplexHeatmap otherwise)
+        missing_in_palette <- setdiff(present_vals, pal_names)
+        if (length(missing_in_palette) > 0) {
+          warning(sprintf(
+            "Values in '%s' not found in its palette and will not be colored as intended: %s",
+            ann_col, paste(missing_in_palette, collapse = ", ")
+          ))
+        }
+        
+        # force factor levels to the palette’s names so the mapping is exact and ordered
+        left_ann_df[[ann_col]] <- factor(left_ann_df[[ann_col]], levels = pal_names)
+      } else {
+        # no palette: keep as factor with observed levels
+        left_ann_df[[ann_col]] <- factor(left_ann_df[[ann_col]])
+      }
+    }
+    
+    left_ann_df <- tibble::column_to_rownames(left_ann_df, 'pmhc')
+    
+    # Subset/reorder to heatmap rows
+    left_ann_df <- left_ann_df[rownames(pmhc_mat_ordered), , drop = FALSE]
+    
+    # Build row annotation with your palette
+    left_ann <- rowAnnotation(
+      df  = left_ann_df,
+      col = left_ann_palette
+    )
+  } else {
+    left_ann <- NULL
+  }
+  
+  if (clean_na_features){
+    nonna <- rownames( pmhc_mat_ordered)[rowSums(is.na( pmhc_mat_ordered)) == 0]
+    pmhc_mat_ordered <-  pmhc_mat_ordered[nonna,]
+  }
+  
+  if (flip) {
+    # 1) transpose matrix
+    pmhc_mat_ordered <- t(pmhc_mat_ordered)
+    
+    # 2) swap splits
+    tmp <- split_rows; split_rows <- split_cols; split_cols <- tmp
+    
+    # 3) REBUILD annotations on the correct sides
+    
+    # 3a) Former column annotations (clone_id + custom_annotations) become a ROW annotation now
+    cust_cols_present <- intersect(custom_annotations, colnames(ann_subset_ordered))
+    row_ann_df <- ann_subset_ordered[, c("clone_id", cust_cols_present), drop = FALSE]
+    # rownames must match new heatmap ROWS (which are the old columns = cells)
+    stopifnot(identical(rownames(row_ann_df), rownames(pmhc_mat_ordered)))
+    
+    left_ann <- rowAnnotation(
+      df  = row_ann_df,
+      col = color_list,
+      show_legend = rep(show_legend_ann, length.out = ncol(row_ann_df))  # hide/show per track
+    )
+    
+    # 3b) Former left-side pMHC annotation (if any) becomes a COLUMN annotation now
+    if (!is.null(left_ann_vars)) {
+      # columns are pMHC after transpose; align the df to new columns
+      top_ann_df <- left_ann_df[colnames(pmhc_mat_ordered), , drop = FALSE]
+      hm22ann <- HeatmapAnnotation(
+        df   = top_ann_df,
+        col  = left_ann_palette,
+        which = "column",
+        show_legend = rep(show_legend_ann, length.out = ncol(top_ann_df))
+      )
+    } else {
+      hm22ann <- NULL
+    }
+  }
+  
+  show_row_names2    <- if (flip) FALSE else show_row_names
+  show_column_names <- if (flip) TRUE else FALSE
+  pmhc_subset_hmap <- Heatmap(
+    pmhc_mat_ordered, name = "pmhc_tcr_hmap", 
+    show_heatmap_legend = show_heatmap_legend, 
+    row_split = split_rows, column_split = split_cols,
+    show_row_names = show_row_names2, 
+    show_column_names = show_column_names,
+    col = col_fun, na_col = na_col,
+    cluster_rows = F, cluster_columns = F,
+    row_names_gp = grid::gpar(fontsize = rowm.fonts),  
+    column_title_gp = gpar(fontsize = column_title_fonts), 
+    column_title_rot = column_title_rot,
+    top_annotation=hm22ann, left_annotation = left_ann)
+  
+  if (!highlight_pmhc.tcr){
+    return(pmhc_subset_hmap)
+  } else {
+    if (length(clones) > 300 & stop_large_highlighting){
+      stop('highlighting more than 300 clones specificity usually crushes the session, \n
+           if you want to continue, set stop_large_highlighting=F')
+    }
+    if (!is.null(split_cols)){
+      stop('Highlighting specificities in the clone split heatmap is not supported')
+    }
+    draw(pmhc_subset_hmap)
+    tcr_pmhc <- ann_subset_ordered %>%
+      dplyr::select(clone_id, !!sym(highlight_column)) %>%
+      filter(!is.na(.data[[highlight_column]]), .data[[highlight_column]] != 'Negative') %>%
+      unique() %>%
+      separate_rows(!!sym(highlight_column), sep=':')
+    
+    n_iter <- nrow(tcr_pmhc)
+    if (verbose){
+      pb <- txtProgressBar(min = 0, max = n_iter, style = 3, width = 50, char = "+") 
+    }  
+    
+    nc_all <- ncol(pmhc_mat_ordered)
+    nr_all <- nrow(pmhc_mat_ordered)
+    for (i in seq_len(n_iter)) {
+      clone_i   <- tcr_pmhc[i, ]$clone_id
+      antigen_i <- tcr_pmhc[i, ][[highlight_column]]
+      
+      # indices of cells belonging to this clone
+      cell_ids_i <- which(ann_subset_ordered$clone_id == clone_i)
+      if (length(cell_ids_i) == 0) {
+        if (verbose) setTxtProgressBar(pb, i)
+        next
+      }
+      
+      if (!flip) {
+        # ----- ORIGINAL ORIENTATION -----
+        col_indices <- match(rownames(ann_subset_ordered)[cell_ids_i], colnames(pmhc_mat_ordered))
+        col_indices <- col_indices[!is.na(col_indices)]
+        if (length(col_indices) == 0) {
+          if (verbose) setTxtProgressBar(pb, i)
+          next
+        }
+        
+        min_col <- min(col_indices)
+        max_col <- max(col_indices)
+        pmhc_row <- match(antigen_i, rownames(pmhc_mat_ordered))
+        if (is.na(pmhc_row)) {
+          if (verbose) setTxtProgressBar(pb, i)
+          next
+        }
+        
+        # ----- FLIPPED ORIENTATION -----
+        row_indices <- match(rownames(ann_subset_ordered)[cell_ids_i], rownames(pmhc_mat_ordered))
+        row_indices <- row_indices[!is.na(row_indices)]
+        if (length(row_indices) == 0) { if (verbose) setTxtProgressBar(pb, i); next }
+        
+        min_row <- min(row_indices)
+        max_row <- max(row_indices)
+        pmhc_col <- match(antigen_i, colnames(pmhc_mat_ordered))
+        if (is.na(pmhc_col)) { if (verbose) setTxtProgressBar(pb, i); next }
+        
+        decorate_heatmap_body("pmhc_tcr_hmap", {
+          # center the single antigen column; span rows of the clone
+          x_center <- (pmhc_col - 0.5) / nc_all
+          width    <- 1 / nc_all
+          y_center <- 1 - (((min_row + max_row)/2 - 0.5) / nr_all)
+          height   <- (max_row - min_row + 1) / nr_all
+          
+          if (skip_bugged_frames && height > bugged_width) return(NULL)
+          
+          grid.rect(
+            x = x_center, y = y_center, width = width, height = height,
+            just = c("center", "center"),
+            gp = gpar(col = highlight_color, lwd = lwd, fill = NA)
+          )
+        })
+        
+      } else {
+        # ----- FLIPPED ORIENTATION -----
+        row_indices <- match(rownames(ann_subset_ordered)[cell_ids_i], rownames(pmhc_mat_ordered))
+        row_indices <- row_indices[!is.na(row_indices)]
+        if (length(row_indices) == 0) {
+          if (verbose) setTxtProgressBar(pb, i)
+          next
+        }
+        
+        min_row <- min(row_indices)
+        max_row <- max(row_indices)
+        pmhc_col <- match(antigen_i, colnames(pmhc_mat_ordered))
+        if (is.na(pmhc_col)) {
+          if (verbose) setTxtProgressBar(pb, i)
+          next
+        }
+        
+        decorate_heatmap_body("pmhc_tcr_hmap", {
+          x      <- (pmhc_col - 1) / ncol(pmhc_mat_ordered)
+          width  <- 1 / ncol(pmhc_mat_ordered)
+          y_center <- 1 - (((min_row + max_row) / 2 - 0.5) / nrow(pmhc_mat_ordered))
+          height   <- (max_row - min_row + 1) / nrow(pmhc_mat_ordered)
+          
+          if (skip_bugged_frames && height > bugged_width) return(NULL)
+          
+          grid.rect(
+            x = x, y = y_center, width = width, height = height,
+            just = c("left", "center"),
+            gp = gpar(col = highlight_color, lwd = lwd, fill = NA)
+          )
+        })
+      }
+      
+      if (verbose) setTxtProgressBar(pb, i)
+    }
+    
+  }
+  if (verbose) close(pb)
+}
+#' Generate a Heatmap of pMHC Distribution Across Clones
+#'
+#' This function visualizes calues of peptide-MHC (pMHC) across different clones 
+#' within a given dataset, offering the option to highlight specific pMHC-TCR pairs. It allows for 
+#' customization of the heatmap appearance and can subset the data based on patient identifiers or specific 
+#' pMHCs. The heatmap can be ordered based on various criteria to facilitate the identification of patterns 
+#' or relationships within the data.
+#'
+#' @param object Seurat object, containing single-cell data along with 
+#' pMHC and clone annotations.
+#' @param clones A vector of clone identifiers to include in the analysis.
+#' @param patient Optional; a patient identifier to filter the data by a specific patient.
+#' @param slot The assay slot from which to retrieve the data (default is 'counts').
+#' @param clones_order Optional; an order for the clones to be displayed in the heatmap.
+#' @param hm_breaks Numeric vector specifying the breakpoints for heatmap coloring.
+#' @param hm_palette A vector of colors corresponding to `hm_breaks` for heatmap coloring.
+#' @param condpalette A color palette for conditioning variables, if applicable.
+#' @param highlight_pmhc.tcr Optional; specific pMHC-TCR interactions to highlight in the heatmap.
+#' @param pmhc_palette A color palette for pMHCs, if differentiating by pMHC is desired.
+#' @param rowm.fonts Font size for row names.
+#' @param column_title_fonts Font size for the column title.
+#' @param column_title_rot Rotation angle for the column title.
+#' @param use_original_order Logical; whether to use the original order of clones.
+#' @param clean_mat Logical; whether to remove 'Negative' classifications from the matrix.
+#' @param add_tcr_cluster Logical; whether to add TCR clustering information, if available.
+#' @param show_row_names Logical; whether to display row names in the heatmap.
+#' @param pmhc_subset Optional; a subset of pMHCs to include in the heatmap.
+#' @param ... Additional arguments passed to the heatmap function.
+#' @param lwd thickness of the highliting frame
+#'
+#' @return A ComplexHeatmap object visualizing the specified pMHC distribution across clones. The heatmap 
+#' can be customized extensively via function arguments and supports highlighting of specific pMHC-TCR interactions.
+#'
+#' @examples
+#' # Assuming 'data' is a dataset object with required annotations:
+#' heatmap <- pmhc_heatmap(data, clones = c("clone1", "clone2"), patient = "patient1")
+#' print(heatmap)
+#'
+#' @importFrom ComplexHeatmap Heatmap
+#' @importFrom circlize colorRamp2
+#' @export
+#' 
+pmhc_heatmap_old <- function(object, clones, patient=NULL, slot='counts', assay = 'pMHC', clones_order=NULL, column_split_var=NULL, split_rows=NULL,
                          highlight_pmhc.tcr=F, hm_breaks = NULL, hm_palette=c("blue", "white", "red"), clean_na_features=F, na_col = 'grey',
                          pmhc_palette=NULL, pmhc_order=NULL, condpalette=NULL, highlight_column="pMHC_classification", 
                          stop_large_highlighting=T, show_heatmap_legend=T, rowm.fonts=8, column_title_fonts = 10, 
@@ -417,33 +943,67 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
     left_ann_df <- object@misc$pmhc
     
     pats <- object$Patient[object$clone_id %in% clones] %>% unique()
-    
     if (length(pats) == 1){
-      left_ann_df <- left_ann_df %>% 
-        separate_rows(Patient, sep=':') %>% filter(Patient %in% pats) %>% unique()
+      left_ann_df <- left_ann_df %>%
+        tidyr::separate_rows(Patient, sep=':') %>% dplyr::filter(Patient %in% pats) %>% dplyr::distinct()
     }
     
     if (!is.null(pmhc_subset)){
-      left_ann_df <- left_ann_df %>%
-        filter(pmhc %in% pmhc_subset)
+      left_ann_df <- left_ann_df %>% dplyr::filter(pmhc %in% pmhc_subset)
     }
     
     if (!is.null(pmhc_order)){
-      left_ann_df <- left_ann_df %>% 
-        mutate(pmhc = factor(pmhc, levels = pmhc_order)) %>%
-        arrange(pmhc)
+      left_ann_df <- left_ann_df %>%
+        dplyr::mutate(pmhc = factor(pmhc, levels = pmhc_order)) %>%
+        dplyr::arrange(pmhc)
     }
     
     left_ann_df <- left_ann_df %>%
-      select(all_of(c(left_ann_vars, 'pmhc'))) %>%
-      filter(!is.na(pmhc)) %>%
-      mutate(pmhc = make.unique(as.character(pmhc), sep = "_")) %>%
-      column_to_rownames('pmhc')
+      dplyr::select(dplyr::all_of(c(left_ann_vars, 'pmhc'))) %>%
+      dplyr::filter(!is.na(pmhc)) %>%
+      dplyr::mutate(pmhc = make.unique(as.character(pmhc), sep = "_"))
     
-    ####### CUSTOMIZE!!!!!!
-    left_ann <- rowAnnotation(df = left_ann_df[rownames(pmhc_mat_ordered),], 
-                              col = left_ann_palette)
+    # --- CLEAN & VALIDATE VALUES FOR EACH LEFT ANNOTATION ---
+    for (ann_col in left_ann_vars) {
+      # trim spaces + force character
+      left_ann_df[[ann_col]] <- trimws(as.character(left_ann_df[[ann_col]]))
+      
+      # if a palette is provided for this column, ensure perfect name match
+      if (!is.null(left_ann_palette) && !is.null(left_ann_palette[[ann_col]])) {
+        pal_names <- names(left_ann_palette[[ann_col]])
+        if (is.null(pal_names)) {
+          stop(sprintf("left_ann_palette[['%s']] must be a named vector", ann_col))
+        }
+        
+        present_vals <- sort(unique(na.omit(left_ann_df[[ann_col]])))
+        
+        # warn if unseen categories (will be mapped automatically by ComplexHeatmap otherwise)
+        missing_in_palette <- setdiff(present_vals, pal_names)
+        if (length(missing_in_palette) > 0) {
+          warning(sprintf(
+            "Values in '%s' not found in its palette and will not be colored as intended: %s",
+            ann_col, paste(missing_in_palette, collapse = ", ")
+          ))
+        }
+        
+        # force factor levels to the palette’s names so the mapping is exact and ordered
+        left_ann_df[[ann_col]] <- factor(left_ann_df[[ann_col]], levels = pal_names)
+      } else {
+        # no palette: keep as factor with observed levels
+        left_ann_df[[ann_col]] <- factor(left_ann_df[[ann_col]])
+      }
+    }
     
+    left_ann_df <- tibble::column_to_rownames(left_ann_df, 'pmhc')
+    
+    # Subset/reorder to heatmap rows
+    left_ann_df <- left_ann_df[rownames(pmhc_mat_ordered), , drop = FALSE]
+    
+    # Build row annotation with your palette
+    left_ann <- rowAnnotation(
+      df  = left_ann_df,
+      col = left_ann_palette
+    )
   } else {
     left_ann <- NULL
   }
@@ -529,7 +1089,6 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
   }
   if (verbose) close(pb)
 }
-
 
 
 

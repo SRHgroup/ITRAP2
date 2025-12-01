@@ -377,8 +377,12 @@ tcr_pmhc_permutation.test <- function(pmhc_mat, barcodes_to_test,
   
   cl_size <- length(clone_coords)
   
-  observed_means <- rowMeans(pmhc_mat[, clone_coords, drop=FALSE])[barcodes_to_test]
-  observed_stabs <- apply(pmhc_mat, 1, function(x) mean(x > stab_z))[barcodes_to_test]
+  # submatrix once
+  sub_obs <- pmhc_mat[, clone_coords, drop = FALSE]
+  
+  # ensure names so subsetting by barcodes works even for 1-row matrices
+  observed_means <- setNames(rowMeans(sub_obs), rownames(sub_obs))[barcodes_to_test]
+  observed_stabs <- setNames(rowMeans(sub_obs > stab_z), rownames(sub_obs))[barcodes_to_test]
   
   simulated_means <- matrix(NA, nrow = nrow(pmhc_mat), ncol = n_permutations)
   simulated_stabs <- matrix(NA, nrow = nrow(pmhc_mat), ncol = n_permutations)
@@ -394,14 +398,15 @@ tcr_pmhc_permutation.test <- function(pmhc_mat, barcodes_to_test,
   
   for (i in 1:n_permutations) {
     sampled_columns <- sample(ncol(pmhc_mat), cl_size, replace = FALSE)
-    simulated_means[, i] <- rowMeans(pmhc_mat[, sampled_columns, drop=FALSE])
-    simulated_stabs[, i] <- apply(pmhc_mat[, sampled_columns, drop=FALSE], 1, function(x) mean(x > stab_z))
+    sub_sim <- pmhc_mat[, sampled_columns, drop = FALSE]
+    simulated_means[, i] <- rowMeans(sub_sim, na.rm = T)
+    simulated_stabs[, i] <- rowMeans(sub_sim > stab_z, na.rm = T)
   }
   
   means_p_values <- sapply(barcodes_to_test, 
-                           function(pmhc) mean(simulated_means[pmhc,] >= observed_means[pmhc]))
+                           function(pmhc) mean(simulated_means[pmhc,] >= observed_means[pmhc], na.rm=T))
   stabs_p_values <- sapply(barcodes_to_test, 
-                           function(pmhc) mean(simulated_stabs[pmhc,] >= observed_stabs[pmhc]))
+                           function(pmhc) mean(simulated_stabs[pmhc,] >= observed_stabs[pmhc], na.rm=T))
   
   combined_p_values <- mapply(function(p1, p2) {
     chi_sq_statistic <- -2 * (log(p1) + log(p2))
@@ -429,7 +434,7 @@ tcr_pmhc_permutation.test <- function(pmhc_mat, barcodes_to_test,
 #' permutation_test_specific_pair()
 #'
 #' @export
-permutation_test_specific_pair <- function(object, bc_or_pmhc, use_pmhc=T, 
+permutation_test_specific_pair <- function(object, bc_or_pmhc, use_pmhc=T, drop.na=F,
                                            clone=NULL, full_tcr=NULL, ...){
   
   pmhc_mat <- GetAssayData(object, layer = 'data', assay = 'pMHC')
@@ -439,10 +444,17 @@ permutation_test_specific_pair <- function(object, bc_or_pmhc, use_pmhc=T,
     rownames(pmhc_mat) <- recode(rownames(pmhc_mat), !!!bc_to_pmhc)
   }
   
-  if (is.null(full_tcr)){
-    clone_coords <- which(object$clone_id == clone)
-  } else if (is.null(clone)){
-    clone_coords <- which(object$full_tcr == full_tcr)
+  if (drop.na){
+    pmhc_mat <- pmhc_mat[bc_or_pmhc, ,drop=FALSE]
+    pmhc_mat <- pmhc_mat[, !is.na(pmhc_mat[1, ]), drop = FALSE] 
+    
+    clone_coords <- which(colnames(pmhc_mat) %in% Cells(object)[object$clone_id == clone])
+  } else{
+    if (is.null(full_tcr)){
+      clone_coords <- which(object$clone_id == clone)
+    } else if (is.null(clone)){
+      clone_coords <- which(object$full_tcr == full_tcr)
+    }
   }
   
   p_values <- tcr_pmhc_permutation.test(pmhc_mat=pmhc_mat, 
@@ -563,7 +575,7 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', clones_to_analy
                         double_loc_scale=F, filter_by_zscore=FALSE, filter_by_zscore_big_clones=FALSE,
                         adjust_permutation = FALSE, adjust_test_within_clone = FALSE, padj_method = "BH",
                         z_score_threshold=2, calculate_pvalue=TRUE, calculate_confidence_score=TRUE,
-                        alpha=1, beta=1, gamma=1, delta=1, force=F, verbose=TRUE, ...) {
+                        alpha=1, beta=1, gamma=1, delta=1, force=F, print_clone_id=FALSE, verbose=TRUE, ...) {
   library(shades)
   library(EnvStats)
   
@@ -604,50 +616,54 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', clones_to_analy
   clones <- object$clone_id[!is.na(object$clone_id)]
   
   if (!is.null(clones_to_analyse)){
-    clones <- clones[clones %in% clones_to_analyse]
-  }
-  
-  big_clones <- names(table(clones)[table(clones) >= cl_size_thresh])
-  
-  clone_bulk <- NULL
-  
-  if (length(big_clones) > 0) {
-    if (verbose) {
-      cat('\nAggregating clonotype aggregated pseudobulk pMHC matrix\n')
-    }
-    clone_bulk <- ClonePseudobulk(object %>% subset(clone_id %in% big_clones), 
+    submited_clones <- clones[clones %in% clones_to_analyse] %>% unique()
+    clone_bulk <- ClonePseudobulk(object = object %>% subset(clone_id %in% submited_clones), 
                                   assay = assay, clone_col = 'clone_id', 
-                                  slot = slot, 
-                                  filter_by_zscore=filter_by_zscore_big_clones,
-                                  z_score_threshold=z_score_threshold)
-  } else if (verbose) {
-    cat('\nNo big clones found, skipping pseudobulk aggregation\n')
+                                  slot = slot, filter_by_zscore=FALSE)
+  } else{
+    
+    big_clones <- names(table(clones)[table(clones) >= cl_size_thresh])
+    
+    clone_bulk <- NULL
+    
+    if (length(big_clones) > 0) {
+      if (verbose) {
+        cat('\nAggregating clonotype aggregated pseudobulk pMHC matrix\n')
+      }
+      clone_bulk <- ClonePseudobulk(object %>% subset(clone_id %in% big_clones), 
+                                    assay = assay, clone_col = 'clone_id', 
+                                    slot = slot, 
+                                    filter_by_zscore=filter_by_zscore_big_clones,
+                                    z_score_threshold=z_score_threshold)
+    } else if (verbose) {
+      cat('\nNo big clones found, skipping pseudobulk aggregation\n')
+    }
+    
+    if (assign_small_clones){
+      small_clones <- object$clone_id[!object$clone_id %in% big_clones] %>% drop.na() %>% unique()
+      
+      if (!is.null(clones_to_analyse)){
+        small_clones <- small_clones[small_clones %in% clones_to_analyse]
+      }
+      
+      single_gems <- ClonePseudobulk(object %>% subset(clone_id %in% small_clones), 
+                                     assay = assay, clone_col = 'clone_id', 
+                                     slot = slot, 
+                                     filter_by_zscore=filter_by_zscore_big_clones,
+                                     z_score_threshold=z_score_threshold)
+      
+      if (filter_by_zscore){
+        single_gems <- filter_by_z_score(single_gems, 
+                                         z_score_threshold = z_score_threshold)
+      }
+      
+      # Combine single-gem data with clone_bulk if it exists
+      if (!is.null(clone_bulk)) {
+        clone_bulk <- cbind(clone_bulk, single_gems)
+      } else {
+        clone_bulk <- single_gems
+      }
   }
-  
-  if (assign_small_clones){
-    small_clones <- object$clone_id[!object$clone_id %in% big_clones] %>% drop.na() %>% unique()
-    
-    if (!is.null(clones_to_analyse)){
-      small_clones <- small_clones[small_clones %in% clones_to_analyse]
-    }
-    
-    single_gems <- ClonePseudobulk(object %>% subset(clone_id %in% small_clones), 
-                                   assay = assay, clone_col = 'clone_id', 
-                                   slot = slot, 
-                                   filter_by_zscore=filter_by_zscore_big_clones,
-                                   z_score_threshold=z_score_threshold)
-    
-    if (filter_by_zscore){
-      single_gems <- filter_by_z_score(single_gems, 
-                                       z_score_threshold = z_score_threshold)
-    }
-    
-    # Combine single-gem data with clone_bulk if it exists
-    if (!is.null(clone_bulk)) {
-      clone_bulk <- cbind(clone_bulk, single_gems)
-    } else {
-      clone_bulk <- single_gems
-    }
     
     if (verbose) {
       cat(sprintf("\nRemoving features with entropy smaller than %g for clones > than %g gems\n", entropy_thresh, cl_size_thresh))
@@ -667,6 +683,10 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', clones_to_analy
   ####  L O O P ####
   ##################
   for (i in 1:n_iter) {
+    if (print_clone_id){
+      clone_print <- object$clone_id[object$clone_id == colnames(clone_bulk)[i]] %>% unique() %>% drop.na()
+      print(clone_print)
+    }
     cl_size <- object$clone_size[object$clone_id == colnames(clone_bulk)[i]] %>% unique() %>% drop.na()
     scores <- sort(clone_bulk[,i], decreasing = F)
     scores[scores < 0] <- 0
@@ -761,12 +781,23 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', clones_to_analy
                          dimnames = list(names(outliers), names(pmhc_mat)))  
     }
     
-    p_values <- tcr_pmhc_permutation.test(pmhc_mat=pmhc_mat, 
-                                          barcodes_to_test=names(outliers),
-                                          sample_permutation='within_pmhc',
-                                          p_adj_method = 'none',
-                                          clone_coords=clone_coords)
-    
+    p_values <- tryCatch(
+      {
+        tcr_pmhc_permutation.test(
+          pmhc_mat = pmhc_mat,
+          barcodes_to_test = names(outliers),
+          sample_permutation = "within_pmhc",
+          p_adj_method = "none",
+          clone_coords = clone_coords
+        )
+      },
+      error = function(e) {
+        message("Skipping iteration due to error: ", conditionMessage(e))
+      }
+    )
+    if (is.null(p_values)){
+      next
+    }
     
     entropy <- object@misc$noise_score[names(outliers),]$entropy
     concordance <- calculate_pmhc_concordance(clone_obj = subset(object, clone_id == colnames(clone_bulk)[i]), 
@@ -832,29 +863,93 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', clones_to_analy
                               method=padj_method)
   }
   
-  pmhc_cols <- '^(pMHC_classification|pMHC_confidence|pMHC_pvalues|pMHC_wclone_pvalues|pMHC_deltas|pMHC_scaled_umis)$'
+  pmhc_cols <- c(
+    "pMHC_classification",
+    "pMHC_confidence",
+    "pMHC_pvalues",
+    "pMHC_wclone_pvalues",
+    "pMHC_deltas",
+    "pMHC_scaled_umis"
+  )
   
-  if (is.null(clones_to_analyse)){
+  if (is.null(clones_to_analyse)) {
     object@meta.data <- object@meta.data %>%
-      tibble::rownames_to_column('row_id') %>%
-      dplyr::select(-matches(pmhc_cols)) %>%
-      left_join(df, by = 'clone_id') %>%
-      tibble::column_to_rownames('row_id')
+      tibble::rownames_to_column("row_id") %>%
+      dplyr::select(-any_of(pmhc_cols)) %>%
+      dplyr::left_join(df, by = "clone_id") %>%
+      tibble::column_to_rownames("row_id")
   } else {
     old_metadata <- object@meta.data %>%
-      filter(!clone_id %in% clones_to_analyse)
+      dplyr::filter(!clone_id %in% clones_to_analyse)
     
     new_metadata <- object@meta.data %>%
-      filter(clone_id %in% clones_to_analyse) %>%
-      tibble::rownames_to_column('row_id') %>%
-      dplyr::select(-matches(pmhc_cols)) %>%
-      left_join(df, by = 'clone_id') %>%
-      tibble::column_to_rownames('row_id')
+      dplyr::filter(clone_id %in% clones_to_analyse) %>%
+      tibble::rownames_to_column("row_id") %>%
+      dplyr::select(-any_of(pmhc_cols)) %>%
+      dplyr::left_join(df, by = "clone_id") %>%
+      tibble::column_to_rownames("row_id")
     
     metadata <- rbind(old_metadata, new_metadata)
-    object@meta.data <- metadata[Cells(object)]
+    object@meta.data <- metadata[Cells(object), , drop = FALSE]
   }
   
   return(object)
 }
 
+
+check_pmhc_consistency <- function(object, sep = ":", stop_on_error = FALSE) {
+  md <- object@meta.data
+  rn <- rownames(md)
+  
+  cols_base <- c(
+    "pMHC_classification", "pMHC_confidence", "pMHC_pvalues",
+    "pMHC_wclone_pvalues", "pMHC_deltas", "pMHC_scaled_umis"
+  )
+  cols <- cols_base[cols_base %in% colnames(md)]
+  if ("epitope_type_multiple" %in% colnames(md))
+    cols <- c(cols, "epitope_type_multiple")
+  
+  if (!length(cols)) {
+    warning("No pMHC columns found to check.")
+    return(tibble::tibble())
+  }
+  
+  # robust token counter:
+  # - coerces to character
+  # - treats NA, "", "Negative", and literal "NA" as 0 tokens
+  cnt <- function(x) {
+    sx <- as.character(x)
+    if (length(sx) == 0L || is.na(sx) || sx == "" || sx == "Negative" || sx == "NA") return(0L)
+    parts <- strsplit(sx, sep, fixed = TRUE)[[1]]
+    sum(nzchar(parts))
+  }
+  
+  counts <- as.data.frame(lapply(md[, cols, drop = FALSE], function(v) {
+    vapply(v, cnt, integer(1))
+  }))
+  rownames(counts) <- rn
+  
+  all_equal <- apply(counts, 1, function(r) length(unique(r)) == 1)
+  issues <- counts[!all_equal, , drop = FALSE]
+  
+  if (nrow(issues)) {
+    issues <- tibble::as_tibble(issues, rownames = "cell_id") %>%
+      dplyr::mutate(clone_id = md[cell_id, "clone_id", drop = TRUE]) %>%
+      dplyr::relocate(clone_id, .after = cell_id)
+    
+    attr(issues, "summary") <- list(
+      total_checked = nrow(md),
+      problems = nrow(issues),
+      ok = nrow(md) - nrow(issues)
+    )
+    
+    if (stop_on_error) {
+      stop(sprintf("Consistency check failed for %d rows. Inspect returned tibble.", nrow(issues)), call. = FALSE)
+    }
+  } else {
+    issues <- tibble::tibble()
+    attr(issues, "summary") <- list(total_checked = nrow(md), problems = 0, ok = nrow(md))
+  }
+  
+  issues
+}
