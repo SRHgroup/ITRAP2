@@ -37,6 +37,7 @@ assign_pmhc(
   gamma = 1,
   delta = 1,
   force = F,
+  print_clone_id = FALSE,
   verbose = TRUE,
   ...
 )

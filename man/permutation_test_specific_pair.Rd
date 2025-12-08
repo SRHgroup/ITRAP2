@@ -8,6 +8,7 @@ permutation_test_specific_pair(
   object,
   bc_or_pmhc,
   use_pmhc = T,
+  drop.na = F,
   clone = NULL,
   full_tcr = NULL,
   ...

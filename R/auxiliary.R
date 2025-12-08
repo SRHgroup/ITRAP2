@@ -120,6 +120,100 @@ normalize_vector <- function(vec) {
   return(normalized_vec)
 }
 
+
+#' Extract pMHC-TCR Pairs from Seurat Object
+#'
+#' This function extracts pMHC-TCR pairs from a Seurat object, ensuring each pair is written with each pair in a single row.
+#'
+#' @param object A Seurat object containing TCR and pMHC data.
+#' @param custom_columns a character vector of columns from your `objects meta.data you want to include 
+#' @param check_notation check and pring possible errors in storing pMHC related columns, with incinsistent : signs, separating multiple pMHC 
+#' @return A data frame with each row representing a unique pMHC-TCR pair. The data frame includes columns for pMHC classification, confidence, p-values, clonotype details, and TCR details.
+#'
+#' @examples
+#' # Assuming `seurat_obj` is a Seurat object with relevant data
+#' pairs_df <- extract_pairs(seurat_obj)
+#'
+#' @export
+extract_pairs <- function(object, include_negative = FALSE, custom_columns = NULL, check_notation = FALSE) {
+  md <- object@meta.data
+  existing_cols <- colnames(md)
+  
+  maybe_etm <- if ("epitope_type_multiple" %in% existing_cols) "epitope_type_multiple" else NULL
+  
+  default_columns <- c(
+    "pMHC_classification", "pMHC_confidence", "pMHC_pvalues",
+    "pMHC_wclone_pvalues", "pMHC_deltas", "pMHC_scaled_umis",
+    "clone_id", "junction_beta", "junction_alpha", "clone_size",
+    "v_call_beta", "c_call_beta", "j_call_beta", "d_call_beta",
+    "v_call_alpha", "c_call_alpha", "j_call_alpha", "d_call_alpha"
+  )
+  
+  all_columns <- c(default_columns, custom_columns, maybe_etm)
+  
+  split_targets <- intersect(
+    c("pMHC_classification", "pMHC_confidence", "pMHC_pvalues",
+      "pMHC_wclone_pvalues", "pMHC_deltas", "pMHC_scaled_umis",
+      "epitope_type_multiple"),
+    existing_cols
+  )
+  
+  # ---------------------------
+  # ⭐ PRE-CHECK FOR BAD COLS ⭐
+  # ---------------------------
+  if (check_notation){
+    if (length(split_targets) > 1) {
+      
+      # count number of ":" items per column
+      sep_counts <- md %>%
+        mutate(row_id_original = row_number()) %>%
+        mutate(across(all_of(split_targets), ~ ifelse(is.na(.x) | .x == "", 1L,
+                                                      stringr::str_count(.x, ":") + 1L)))
+      
+      # for each row, check if all split-target columns have same count
+      inconsistent <- sep_counts %>%
+        rowwise() %>%
+        mutate(is_inconsistent = length(unique(c_across(all_of(split_targets)))) > 1) %>%
+        ungroup() %>%
+        filter(is_inconsistent)
+      
+      if (nrow(inconsistent) > 0) {
+        message("\n❌ ERROR: Inconsistent ':' counts detected before separate_rows().\n")
+        
+        purrr::walk(1:nrow(inconsistent), function(i) {
+          row <- inconsistent[i, ]
+          row_id <- row$row_id_original
+          clone <- row$clone_id %||% "NA"
+          
+          cat("-----\n")
+          cat("Original meta.data row:", row_id, "\n")
+          cat("Clone ID:", clone, "\n")
+          cat("Column item counts:\n")
+          
+          for (col in split_targets) {
+            cat("  •", col, "→", row[[col]], "\n")
+          }
+        })
+        
+        stop("\nFix the inconsistent ':'-separated columns before splitting.\n")
+      }
+    }
+  }
+  
+  md %>%
+    { if (!include_negative) filter(., pMHC_classification != "Negative" & !is.na(pMHC_classification)) else . } %>%
+    filter(productive_beta & productive_alpha) %>%
+    select(all_of(intersect(all_columns, existing_cols))) %>%
+    tidyr::separate_rows(all_of(split_targets), sep = ":") %>%
+    mutate(
+      HLA = gsub("_.+", "", pMHC_classification),
+      peptide = gsub(".+_", "", pMHC_classification),
+      tcr_pmhc = paste0(junction_beta, "_", junction_alpha, "_", peptide)
+    ) %>%
+    distinct()
+}
+
+
 #' Extract pMHC-TCR Pairs from Seurat Object
 #'
 #' This function extracts pMHC-TCR pairs from a Seurat object, ensuring each pair is written with each pair in a single row.
@@ -133,7 +227,7 @@ normalize_vector <- function(vec) {
 #' pairs_df <- extract_pairs(seurat_obj)
 #'
 #' @export
-extract_pairs <- function(object, include_negative = FALSE, custom_columns = NULL) {
+extract_pairs_old <- function(object, include_negative = FALSE, custom_columns = NULL) {
   md <- object@meta.data
   existing_cols <- colnames(md)
   
@@ -169,8 +263,70 @@ extract_pairs <- function(object, include_negative = FALSE, custom_columns = NUL
     dplyr::distinct()
 }
 
-
-
+#' Compute per-clone pMHC scaled UMI values and delta-scores
+#'
+#' This function aggregates pMHC signals per T-cell clone in a Seurat object.
+#' For every clone, it computes:
+#'
+#' * **scaled UMI expression**: mean per-feature values from the assay `@data`
+#'   collapsed into a ":"-separated string in the order of pMHC tokens.
+#'
+#' * **delta scores**: feature-wise positive-part scaled expression
+#'   from `@scale.data`, normalized and background-subtracted using the mean
+#'   expression of all *non-target* pMHC features.
+#'
+#' The pMHC features belonging to each clone are extracted from a metadata
+#' column such as `"pMHC_classification"`. If the metadata encodes multiple
+#' pMHCs for a clone in a single string (e.g. `"A0201_GVLDAVWRV:A0201_KVDDTFYYV"`),
+#' the function splits and maps each token to the true assay feature (Barcode)
+#' using `object@misc$pmhc`.
+#'
+#' The resulting per-clone collapsed values are written back into
+#' `object@meta.data` under new columns defined by `out_scaled_col`
+#' and `out_delta_col`. Any previous versions of these columns are removed.
+#'
+#' @param object A Seurat object containing a pMHC assay. The metadata must
+#'   include `clone_id` and a column with pMHC tokens (default:
+#'   `"pMHC_classification"`). If present, `object@misc$pmhc` must contain
+#'   a mapping between human-readable pMHC names and feature `Barcode`s.
+#'
+#' @param assay Character. Name of the assay storing pMHC data (default: `"pMHC"`).
+#'
+#' @param pmhc_class_col Character. Metadata column specifying pMHC tokens
+#'   collapsed per clone (e.g. `"A0201_GVLDAWVRV:A0201_KVDDTFYYV"`).
+#'
+#' @param out_scaled_col Character. Name of the metadata column to store
+#'   per-clone collapsed scaled-UMI values (default `"pMHC_scaled_umis"`).
+#'
+#' @param out_delta_col Character. Name of the metadata column to store
+#'   per-clone delta-scores (default `"pMHC_deltas"`).
+#'
+#' @param clone_col Character. Metadata column that uniquely identifies a clone
+#'   (default `"clone_id"`).
+#'
+#' @param verbose Logical. Whether to display a progress bar (default `TRUE`).
+#'
+#' @details
+#'
+#'
+#' **Returned columns**
+#' * `out_scaled_col`: e.g. `"0.124:0.522:0.991"`
+#' * `out_delta_col`:  e.g. `"0.001:0.551:-0.110"`
+#'
+#' If a clone has no valid pMHC tokens or no mapped features,
+#' `"Negative"` is returned for both fields.
+#'
+#' @return The input Seurat object with two updated metadata columns:
+#'   * `out_scaled_col` (character): ":"-collapsed per-clone UMI means  
+#'   * `out_delta_col`  (character): ":"-collapsed per-clone delta-scores
+#'
+#' @examples
+#' \dontrun{
+#'   seurat_obj <- calculate_pmhc_scaled_umis_and_deltas(seurat_obj)
+#'   head(seurat_obj@meta.data[c("pMHC_scaled_umis", "pMHC_deltas")])
+#' }
+#'
+#' @export
 calculate_pmhc_scaled_umis_and_deltas <- function(
     object,
     assay = "pMHC",
@@ -279,4 +435,196 @@ calculate_pmhc_scaled_umis_and_deltas <- function(
   object
 }
 
+
+#' Filter pMHC–TCR pairs by donor HLA matching and collapse matched pMHC features per clone
+#'
+#' This function takes a Seurat object containing TCR–pMHC assignments and donor
+#' HLA genotypes (stored in `object@misc$hla_genotype`). For each cell, it checks
+#' whether the presented pMHC allele matches one of the donor's typed HLA alleles.
+#' Only HLA-matched pMHC–TCR pairs are retained, and pMHC-related metadata
+#' (`pMHC_classification`, confidence scores, deltas, UMIs, etc.) are collapsed
+#' per clone into a single ":"-separated string.
+#'
+#' Optionally, the function preserves the unfiltered pMHC metadata columns before
+#' filtering and collapsing, allowing downstream comparison between filtered and
+#' unfiltered data.
+#'
+#' @param object Seurat object containing pMHC–TCR metadata in `@meta.data` and
+#'   HLA genotypes in `@misc$hla_genotype`. The metadata must contain
+#'   `clone_id`, `HLA`, and pMHC fields.
+#' @param keep_unfiltered Logical; if `TRUE` (default), the function stores the
+#'   original pMHC metadata columns in new columns ending with `_unf` before
+#'   filtering.
+#' @param donor_col Name of the metadata column identifying the donor for each
+#'   cell. Must match the first column name of the HLA genotype table stored in
+#'   `object@misc$hla_genotype`.
+#'
+#' @return A Seurat object with updated `@meta.data`, where:
+#'   * HLA-matching pMHC–TCR pairs are retained,
+#'   * pMHC metadata are collapsed per `clone_id`,
+#'   * optional unfiltered metadata columns are added with `_unf` suffix.
+#'
+#' @examples
+#' \dontrun{
+#'   seurat_filtered <- filter_mismatch_responses(seurat_obj, donor_col = "donor")
+#'   head(seurat_filtered@meta.data)
+#' }
+#'
+#' @export
+filter_mismatch_responses <- function(object, keep_unfiltered=T, donor_col='donor'){
+  if (is.null(object@misc$hla_genotype)) {
+    stop('no hla genotyping provided in object@misc$gla_genotype')
+  } else {
+    hlas <- object@misc$hla_genotype
+  }
+  
+  if (colnames(hlas)[1] != donor_col){
+    stop('you have to name 1st column in the hla_genotype, the same way as your donor column in the object, and donor_col param in this function')
+  }
+  
+  if (keep_unfiltered){
+    object@meta.data <- object@meta.data %>%
+      mutate(
+        pMHC_classification_unf = pMHC_classification,
+        pMHC_confidence_unf     = pMHC_confidence,
+        pMHC_pvalues_unf        = pMHC_pvalues,
+        pMHC_wclone_pvalues_unf = pMHC_wclone_pvalues,  
+        pMHC_deltas_unf         = pMHC_deltas,
+        pMHC_scaled_umis_unf    = pMHC_scaled_umis
+      )
+  }
+  
+  object_pairs <- extract_pairs(object, custom_columns = donor_col)
+  
+  object_pairs <- object_pairs %>% 
+    left_join(hlas, by = donor_col) %>%
+    rowwise() %>%
+    mutate(
+      hla_match = case_when(
+        all(is.na(c(`HLA-A1`, `HLA-A2`,
+                    `HLA-B1`, `HLA-B2`,
+                    `HLA-C1`, `HLA-C2`))) ~ NA,
+        
+        TRUE ~ HLA %in% c(`HLA-A1`, `HLA-A2`,
+                          `HLA-B1`, `HLA-B2`,
+                          `HLA-C1`, `HLA-C2`)
+      )
+    ) %>%
+    ungroup()
+  
+  pmhc_cols <- c("pMHC_classification", "pMHC_classification", "pMHC_confidence",
+                 "pMHC_pvalues", "pMHC_wclone_pvalues", "pMHC_deltas", "pMHC_scaled_umis")
+  
+  object_pairs <- object_pairs %>% 
+    filter(hla_match) 
+  
+  object_pairs_collapsed <- object_pairs %>%
+    group_by(clone_id) %>%
+    summarise(
+      across(
+        all_of(pmhc_cols),
+        ~ paste(unique(trimws(as.character(.x))), collapse = ":")
+      ),
+      .groups = "drop"
+    )
+  
+  object_meta <- object@meta.data %>% 
+    dplyr::select(-all_of(pmhc_cols)) %>%
+    rownames_to_column('cell_id') %>%
+    left_join(object_pairs_collapsed) %>%
+    column_to_rownames('cell_id')
+  
+  object@meta.data <- object_meta[Cells(object),]
+  
+  return(object)
+}
+
+
+
+
+mask_pmhc_to_screen <- function(
+    object,
+    screened_hla,
+    assay = "pMHC",
+    donor_col = "donor",
+    barcode_col = "Barcode",
+    dict_hla_col = "HLA"
+) {
+  stopifnot(assay %in% names(object@assays))
+  if (is.null(object@misc$pmhc)) {
+    stop("object@misc$pmhc is missing; expected multimer annotation table there.")
+  }
+  
+  # Pull counts (sparse) and convert to dense so we can write NAs
+  X <- SeuratObject::GetAssayData(object, assay = assay, slot = "counts")
+  barcodes <- rownames(X)
+  cells    <- colnames(X)
+  
+  # ---- Get multimer map from misc
+  multimer_map <- object@misc$pmhc
+  mm <- multimer_map %>%
+    dplyr::select(!!barcode_col, !!dict_hla_col) %>%
+    dplyr::distinct() %>%
+    dplyr::mutate(
+      !!barcode_col := as.character(!!rlang::sym(barcode_col)),
+      !!dict_hla_col := as.character(!!rlang::sym(dict_hla_col))
+    )
+  
+  # Align rows to assay barcodes
+  mm_rows <- dplyr::right_join(
+    mm,
+    tibble::tibble(!!barcode_col := barcodes),
+    by = barcode_col
+  ) %>%
+    dplyr::arrange(factor(!!rlang::sym(barcode_col), levels = barcodes))
+  
+  if (!all(mm_rows[[barcode_col]] == barcodes)) {
+    stop("Row alignment failure between multimer_map and assay rows.")
+  }
+  hla_by_row <- mm_rows[[dict_hla_col]]
+  
+  # ---- Build donor per column
+  md <- object@meta.data
+  if (!donor_col %in% colnames(md)) stop("meta.data has no column: ", donor_col)
+  donors_by_cell <- md[[donor_col]][match(cells, rownames(md))]
+  
+  # ---- donor → allowed HLA
+  keyed <- screened_hla %>%
+    dplyr::mutate(
+      donor_key = as.character(.data$donor_id),
+      screened_hla = as.character(.data$screened_hla)
+    ) %>%
+    dplyr::select(donor_key, screened_hla) %>%
+    dplyr::distinct() %>%
+    dplyr::filter(!is.na(donor_key) & donor_key != "")
+  
+  allowed_map <- stats::setNames(
+    strsplit(keyed$screened_hla, "\\s*,\\s*"),
+    keyed$donor_key
+  )
+  
+  # ---- Mask disallowed rows per donor
+  M <- as.matrix(X)
+  rows_by_hla <- split(seq_along(hla_by_row), hla_by_row)
+  
+  for (d in unique(donors_by_cell)) {
+    cols_d <- which(donors_by_cell == d)
+    if (!length(cols_d)) next
+    if (!(d %in% names(allowed_map))) next
+    
+    allowed <- allowed_map[[d]]
+    allowed_rows <- unlist(rows_by_hla[intersect(names(rows_by_hla), allowed)], use.names = FALSE)
+    disallowed_rows <- setdiff(seq_along(hla_by_row), allowed_rows)
+    if (length(disallowed_rows) == 0) next
+    
+    M[disallowed_rows, cols_d] <- NA_real_
+  }
+  
+  # ---- add as new assay
+  M <-  Matrix(M, sparse = TRUE)
+  new_assay <- SeuratObject::CreateAssayObject(counts = M)
+  object[["pMHC_masked"]] <- new_assay
+  attr(object, "pMHC_masked_matrix") <- M
+  return(object)
+}
 

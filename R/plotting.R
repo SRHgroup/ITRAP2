@@ -616,6 +616,7 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
     column_title_rot = column_title_rot,
     top_annotation=hm22ann, left_annotation = left_ann)
   
+  ### BOOM!
   if (!highlight_pmhc.tcr){
     return(pmhc_subset_hmap)
   } else {
@@ -652,8 +653,12 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
       }
       
       if (!flip) {
-        # ----- ORIGINAL ORIENTATION -----
-        col_indices <- match(rownames(ann_subset_ordered)[cell_ids_i], colnames(pmhc_mat_ordered))
+        ## ----- ORIGINAL ORIENTATION: rows = antigens, cols = cells -----
+        ## columns belonging to this clone
+        col_indices <- match(
+          rownames(ann_subset_ordered)[cell_ids_i],
+          colnames(pmhc_mat_ordered)
+        )
         col_indices <- col_indices[!is.na(col_indices)]
         if (length(col_indices) == 0) {
           if (verbose) setTxtProgressBar(pb, i)
@@ -662,38 +667,35 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
         
         min_col <- min(col_indices)
         max_col <- max(col_indices)
+        
+        ## row for this antigen
         pmhc_row <- match(antigen_i, rownames(pmhc_mat_ordered))
         if (is.na(pmhc_row)) {
           if (verbose) setTxtProgressBar(pb, i)
           next
         }
         
-        # ----- FLIPPED ORIENTATION -----
-        row_indices <- match(rownames(ann_subset_ordered)[cell_ids_i], rownames(pmhc_mat_ordered))
-        row_indices <- row_indices[!is.na(row_indices)]
-        if (length(row_indices) == 0) { if (verbose) setTxtProgressBar(pb, i); next }
-        
-        min_row <- min(row_indices)
-        max_row <- max(row_indices)
-        pmhc_col <- match(antigen_i, colnames(pmhc_mat_ordered))
-        if (is.na(pmhc_col)) { if (verbose) setTxtProgressBar(pb, i); next }
-        
         decorate_heatmap_body("pmhc_tcr_hmap", {
-          # center the single antigen column; span rows of the clone
-          x_center <- (pmhc_col - 0.5) / nc_all
-          width    <- 1 / nc_all
-          y_center <- 1 - (((min_row + max_row)/2 - 0.5) / nr_all)
-          height   <- (max_row - min_row + 1) / nr_all
+          nc <- ncol(pmhc_mat_ordered)
+          nr <- nrow(pmhc_mat_ordered)
+          
+          ## horizontal span = all cells in this clone
+          x_center <- ((min_col + max_col) / 2 - 0.5) / nc
+          width    <- (max_col - min_col + 1) / nc
+          
+          ## vertical span = single antigen row
+          y_center <- 1 - ((pmhc_row - 0.5) / nr)
+          height   <- 1 / nr
           
           if (skip_bugged_frames && height > bugged_width) return(NULL)
           
           grid.rect(
-            x = x_center, y = y_center, width = width, height = height,
+            x = x_center, y = y_center,
+            width = width, height = height,
             just = c("center", "center"),
             gp = gpar(col = highlight_color, lwd = lwd, fill = NA)
           )
         })
-        
       } else {
         # ----- FLIPPED ORIENTATION -----
         row_indices <- match(rownames(ann_subset_ordered)[cell_ids_i], rownames(pmhc_mat_ordered))
@@ -726,7 +728,6 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
           )
         })
       }
-      
       if (verbose) setTxtProgressBar(pb, i)
     }
     
