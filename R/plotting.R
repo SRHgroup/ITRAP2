@@ -321,21 +321,17 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
     names(clpalette) <- ann_subset$clone_id %>% unique()
   }
   
-  # start with clone palette always
   color_list <- list(clone_id = clpalette)
   
   cust_cols_present <- intersect(custom_annotations, colnames(ann_subset))
   
-  # helper: levels for each custom column = palette order (if supplied) else first-appearance
   levels_for <- function(colname, x) {
     pal <- custom_ann_palette[[colname]]
     if (!is.null(pal)) {
       lev <- trimws(names(pal))
       if (is.null(lev)) stop(sprintf("custom_ann_palette[['%s']] must be a named vector", colname))
-      # keep only those actually present (preserve palette order)
       lev[lev %in% unique(trimws(as.character(x)))]
     } else {
-      # order of first appearance in this (already filtered) data
       v <- trimws(as.character(x))
       v[!duplicated(v)]
     }
@@ -343,10 +339,9 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
   
   if (is.null(clones_order)) {
     cells_order <- ann_subset %>%
-      # coerce custom columns to ordered factors before arrange()
       mutate(across(all_of(cust_cols_present),
                     ~ factor(trimws(as.character(.x)), levels = levels_for(cur_column(), .x)))) %>%
-      arrange(clone_id, across(all_of(cust_cols_present))) %>%   # ← left-to-right matches legend
+      arrange(clone_id, across(all_of(cust_cols_present))) %>%   
       rownames_to_column('cell_id') %>%
       pull('cell_id')
   } else {
@@ -405,25 +400,20 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
   ann_subset_ordered <- ann_subset[cells_order,]
   pmhc_mat_ordered <- pmhc_mat[,cells_order]
   
-  # ---- one source of truth for levels (order) ----
   cust_cols_present <- intersect(custom_annotations, colnames(ann_subset_ordered))
   
-  # normalize text
   for (cn in cust_cols_present) {
     ann_subset_ordered[[cn]] <- trimws(as.character(ann_subset_ordered[[cn]]))
   }
   
-  # levels map: either palette order (if provided) or first-appearance order in data
   level_map <- list()
   for (cn in cust_cols_present) {
     if (!is.null(custom_ann_palette[[cn]])) {
       lev <- trimws(names(custom_ann_palette[[cn]]))
       if (is.null(lev)) stop(sprintf("custom_ann_palette[['%s']] must be a named vector", cn))
-      # keep only categories actually present, but keep palette order
       present <- unique(ann_subset_ordered[[cn]])
       lev <- lev[lev %in% present]
     } else {
-      # first-appearance order in the *ordered* data
       v <- ann_subset_ordered[[cn]]
       lev <- v[!duplicated(v)]
     }
@@ -431,14 +421,11 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
     ann_subset_ordered[[cn]] <- factor(ann_subset_ordered[[cn]], levels = lev)
   }
   
-  # start with clone palette already in color_list
-  # build custom palettes aligned to levels
   for (cn in cust_cols_present) {
     lev <- level_map[[cn]]  # ordered!
     pal <- custom_ann_palette[[cn]]
     if (!is.null(pal)) {
       names(pal) <- trimws(names(pal))
-      # auto-fill any missing keys just in case (preserves lev order)
       missing <- setdiff(lev, names(pal))
       if (length(missing) > 0) {
         pal <- c(pal, setNames(randomcoloR::distinctColorPalette(length(missing)), missing))
@@ -451,7 +438,6 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
     }
   }
   
-  # legend order control (applies to both HeatmapAnnotation and rowAnnotation)
   ann_legend_param <- lapply(cust_cols_present, function(cn) {
     list(at = level_map[[cn]], labels = level_map[[cn]])
   })
@@ -515,12 +501,9 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
       dplyr::filter(!is.na(pmhc)) %>%
       dplyr::mutate(pmhc = make.unique(as.character(pmhc), sep = "_"))
     
-    # --- CLEAN & VALIDATE VALUES FOR EACH LEFT ANNOTATION ---
     for (ann_col in left_ann_vars) {
-      # trim spaces + force character
       left_ann_df[[ann_col]] <- trimws(as.character(left_ann_df[[ann_col]]))
       
-      # if a palette is provided for this column, ensure perfect name match
       if (!is.null(left_ann_palette) && !is.null(left_ann_palette[[ann_col]])) {
         pal_names <- names(left_ann_palette[[ann_col]])
         if (is.null(pal_names)) {
@@ -529,7 +512,6 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
         
         present_vals <- sort(unique(na.omit(left_ann_df[[ann_col]])))
         
-        # warn if unseen categories (will be mapped automatically by ComplexHeatmap otherwise)
         missing_in_palette <- setdiff(present_vals, pal_names)
         if (length(missing_in_palette) > 0) {
           warning(sprintf(
@@ -538,20 +520,16 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
           ))
         }
         
-        # force factor levels to the palette’s names so the mapping is exact and ordered
         left_ann_df[[ann_col]] <- factor(left_ann_df[[ann_col]], levels = pal_names)
       } else {
-        # no palette: keep as factor with observed levels
         left_ann_df[[ann_col]] <- factor(left_ann_df[[ann_col]])
       }
     }
     
     left_ann_df <- tibble::column_to_rownames(left_ann_df, 'pmhc')
     
-    # Subset/reorder to heatmap rows
     left_ann_df <- left_ann_df[rownames(pmhc_mat_ordered), , drop = FALSE]
     
-    # Build row annotation with your palette
     left_ann <- rowAnnotation(
       df  = left_ann_df,
       col = left_ann_palette
@@ -566,18 +544,12 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
   }
   
   if (flip) {
-    # 1) transpose matrix
     pmhc_mat_ordered <- t(pmhc_mat_ordered)
     
-    # 2) swap splits
     tmp <- split_rows; split_rows <- split_cols; split_cols <- tmp
     
-    # 3) REBUILD annotations on the correct sides
-    
-    # 3a) Former column annotations (clone_id + custom_annotations) become a ROW annotation now
     cust_cols_present <- intersect(custom_annotations, colnames(ann_subset_ordered))
     row_ann_df <- ann_subset_ordered[, c("clone_id", cust_cols_present), drop = FALSE]
-    # rownames must match new heatmap ROWS (which are the old columns = cells)
     stopifnot(identical(rownames(row_ann_df), rownames(pmhc_mat_ordered)))
     
     left_ann <- rowAnnotation(
@@ -586,9 +558,7 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
       show_legend = rep(show_legend_ann, length.out = ncol(row_ann_df))  # hide/show per track
     )
     
-    # 3b) Former left-side pMHC annotation (if any) becomes a COLUMN annotation now
     if (!is.null(left_ann_vars)) {
-      # columns are pMHC after transpose; align the df to new columns
       top_ann_df <- left_ann_df[colnames(pmhc_mat_ordered), , drop = FALSE]
       hm22ann <- HeatmapAnnotation(
         df   = top_ann_df,
@@ -645,7 +615,6 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
       clone_i   <- tcr_pmhc[i, ]$clone_id
       antigen_i <- tcr_pmhc[i, ][[highlight_column]]
       
-      # indices of cells belonging to this clone
       cell_ids_i <- which(ann_subset_ordered$clone_id == clone_i)
       if (length(cell_ids_i) == 0) {
         if (verbose) setTxtProgressBar(pb, i)
@@ -654,7 +623,7 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
       
       if (!flip) {
         ## ----- ORIGINAL ORIENTATION: rows = antigens, cols = cells -----
-        ## columns belonging to this clone
+        ## columns belonging to X clone
         col_indices <- match(
           rownames(ann_subset_ordered)[cell_ids_i],
           colnames(pmhc_mat_ordered)
@@ -668,7 +637,7 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
         min_col <- min(col_indices)
         max_col <- max(col_indices)
         
-        ## row for this antigen
+        ## row for Y antgen
         pmhc_row <- match(antigen_i, rownames(pmhc_mat_ordered))
         if (is.na(pmhc_row)) {
           if (verbose) setTxtProgressBar(pb, i)
@@ -679,11 +648,9 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
           nc <- ncol(pmhc_mat_ordered)
           nr <- nrow(pmhc_mat_ordered)
           
-          ## horizontal span = all cells in this clone
           x_center <- ((min_col + max_col) / 2 - 0.5) / nc
           width    <- (max_col - min_col + 1) / nc
           
-          ## vertical span = single antigen row
           y_center <- 1 - ((pmhc_row - 0.5) / nr)
           height   <- 1 / nr
           
@@ -697,7 +664,6 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
           )
         })
       } else {
-        # ----- FLIPPED ORIENTATION -----
         row_indices <- match(rownames(ann_subset_ordered)[cell_ids_i], rownames(pmhc_mat_ordered))
         row_indices <- row_indices[!is.na(row_indices)]
         if (length(row_indices) == 0) {
@@ -897,7 +863,6 @@ pmhc_heatmap_old <- function(object, clones, patient=NULL, slot='counts', assay 
     pmhc_mat_ordered <- pmhc_mat_ordered[pmhc_order,]
   }
   
-  # Define colors for annotations
   color_list <- list()
   
   if (!is.null(custom_annotations)){
@@ -964,12 +929,9 @@ pmhc_heatmap_old <- function(object, clones, patient=NULL, slot='counts', assay 
       dplyr::filter(!is.na(pmhc)) %>%
       dplyr::mutate(pmhc = make.unique(as.character(pmhc), sep = "_"))
     
-    # --- CLEAN & VALIDATE VALUES FOR EACH LEFT ANNOTATION ---
     for (ann_col in left_ann_vars) {
-      # trim spaces + force character
       left_ann_df[[ann_col]] <- trimws(as.character(left_ann_df[[ann_col]]))
       
-      # if a palette is provided for this column, ensure perfect name match
       if (!is.null(left_ann_palette) && !is.null(left_ann_palette[[ann_col]])) {
         pal_names <- names(left_ann_palette[[ann_col]])
         if (is.null(pal_names)) {
@@ -978,7 +940,6 @@ pmhc_heatmap_old <- function(object, clones, patient=NULL, slot='counts', assay 
         
         present_vals <- sort(unique(na.omit(left_ann_df[[ann_col]])))
         
-        # warn if unseen categories (will be mapped automatically by ComplexHeatmap otherwise)
         missing_in_palette <- setdiff(present_vals, pal_names)
         if (length(missing_in_palette) > 0) {
           warning(sprintf(
@@ -987,20 +948,16 @@ pmhc_heatmap_old <- function(object, clones, patient=NULL, slot='counts', assay 
           ))
         }
         
-        # force factor levels to the palette’s names so the mapping is exact and ordered
         left_ann_df[[ann_col]] <- factor(left_ann_df[[ann_col]], levels = pal_names)
       } else {
-        # no palette: keep as factor with observed levels
         left_ann_df[[ann_col]] <- factor(left_ann_df[[ann_col]])
       }
     }
     
     left_ann_df <- tibble::column_to_rownames(left_ann_df, 'pmhc')
     
-    # Subset/reorder to heatmap rows
     left_ann_df <- left_ann_df[rownames(pmhc_mat_ordered), , drop = FALSE]
     
-    # Build row annotation with your palette
     left_ann <- rowAnnotation(
       df  = left_ann_df,
       col = left_ann_palette
@@ -1052,24 +1009,19 @@ pmhc_heatmap_old <- function(object, clones, patient=NULL, slot='counts', assay 
       clone_i <- tcr_pmhc[i,]$clone_id
       antigen_i <- tcr_pmhc[i,][[highlight_column]]
       
-      # Get indices of cells belonging to the current clonotype
       cell_ids_i <- which(ann_subset_ordered$clone_id == clone_i)
       if (length(cell_ids_i) == 0) next
       
-      # Find the min and max column indices corresponding to these cells
       col_indices <- match(rownames(ann_subset_ordered)[cell_ids_i], colnames(pmhc_mat_ordered))
       min_col <- min(col_indices)
       max_col <- max(col_indices)
       
-      # Find the row index of the antigen in the heatmap
       pmhc_row <- which(rownames(pmhc_mat_ordered) == antigen_i)
       if (length(pmhc_row) == 0) next  # Skip if antigen not found
       if (length(pmhc_row) > 1) {
-        # Optionally, handle multiple rows (e.g. take the first or compute a combined region)
         pmhc_row <- pmhc_row[1]
       }
       
-      # Draw one rectangle for the clonotype's antigen region
       decorate_heatmap_body("pmhc_tcr_hmap", {
         x = (min_col - 1) / ncol(pmhc_mat_ordered)
         width = (max_col - min_col + 1) / ncol(pmhc_mat_ordered)
@@ -1106,19 +1058,16 @@ plot_smoothing_changes <- function(scaled, smoothed, raw_counts = NULL,
     values <- list(raw_counts, scaled, smoothed)
   }
   
-  # Create a data frame for plotting
   data <- data.frame(
     state = rep(states, each = length(scaled)),
     value = unlist(values),
-    ids = rep(1:length(scaled), times = length(states))  # Identifier for each data point
+    ids = rep(1:length(scaled), times = length(states))  
   )
   
-  # Optional: Add point labels if provided
   if (!is.null(point_labels)) {
     data$label <- rep(point_labels, times = length(states))
   }
   
-  # Aggregate data to calculate dot size based on overlap
   data_agg <- data %>%
     group_by(state, value) %>%
     summarise(
@@ -1127,14 +1076,13 @@ plot_smoothing_changes <- function(scaled, smoothed, raw_counts = NULL,
       .groups = "drop"
     )
   
-  # Expand aggregated data to match original IDs for consistent coloring
   data_expanded <- data_agg %>%
     unnest_longer(ids) 
   
   if (is.null(title)){
     title <- sprintf('Normalisation of pMHC UMI counts\n for %s\n in clone %s', pmhc, clone_id)
   } 
-  # Plot the slope chart
+  
   p <- ggplot(data, aes(x = state, y = value, group = ids, color = as.factor(ids))) +
     geom_line(show.legend = FALSE) +  # Lines between points
     geom_point(data = data_expanded, aes(size = count), show.legend = FALSE) +  # Points sized by count
@@ -1387,7 +1335,6 @@ pmhc_volcano_plot <- function(meta, conf_threshold=.5, pval_threshold=-log10(0.0
     mutate(log_conf = log10(pMHC_confidence)) %>%
     mutate(min10logp = -log10(pMHC_pvalues))         
   
-  # Create the plot
   plot <- ggplot(meta, aes(x = log_conf, y = min10logp)) +
     geom_point(aes(color = (log_conf >= conf_threshold & pMHC_pvalues <= pval_threshold)), size = 2) +
     scale_color_manual(values = c("grey", "red")) +
@@ -1401,7 +1348,6 @@ pmhc_volcano_plot <- function(meta, conf_threshold=.5, pval_threshold=-log10(0.0
     theme_minimal() +
     theme(legend.position = "none")
   
-  # Add text annotations for significant points
   significant_points <- subset(meta, log_conf >= conf_threshold & pMHC_pvalues <= pval_threshold)
   plot <- plot + 
     geom_text_repel(

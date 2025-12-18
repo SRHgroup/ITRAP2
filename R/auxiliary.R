@@ -41,27 +41,23 @@ ClonePseudobulk <- function(object, assay="pMHC", slot="scale.data",
   }
   
   group_ids <- setNames(object = object@meta.data[[clone_col]], nm = Cells(object)) 
-  unique_groups <- unique(group_ids) %>% na.omit()  # Changed from drop.na() to na.omit() which is correct for omitting NA values.
+  unique_groups <- unique(group_ids) %>% na.omit()  
   
   pseudobulk_means <- lapply(unique_groups, function(group) {
     cells_in_group <- names(group_ids[group_ids == group]) %>% drop.na()
     
-    group_data <- data[, cells_in_group, drop = FALSE]  # Ensure it is always treated as a matrix.
+    group_data <- data[, cells_in_group, drop = FALSE]  
     
-    # Calculate row means, ensuring output is a vector if only one row.
-    if (is.matrix(group_data)) {
+     if (is.matrix(group_data)) {
       return(apply(group_data, 1, FUN, na.rm = TRUE))
-      # Directly return the column as is if only one column present.
-    } else {
+     } else {
       return(group_data[,1])
     }
   })
   
-  # Convert list of vectors to a matrix
   pseudobulk_means <- do.call(cbind, pseudobulk_means)
   
-  # Assign the group names to the columns of the result
-  colnames(pseudobulk_means) <- unique_groups
+   colnames(pseudobulk_means) <- unique_groups
   
   return(pseudobulk_means)
 }
@@ -135,7 +131,8 @@ normalize_vector <- function(vec) {
 #' pairs_df <- extract_pairs(seurat_obj)
 #'
 #' @export
-extract_pairs <- function(object, include_negative = FALSE, custom_columns = NULL, check_notation = FALSE) {
+extract_pairs <- function(object, include_negative = FALSE, custom_columns = NULL, 
+                          check_notation = FALSE, label_hla_match = FALSE, donor_col = 'BC') {
   md <- object@meta.data
   existing_cols <- colnames(md)
   
@@ -150,11 +147,11 @@ extract_pairs <- function(object, include_negative = FALSE, custom_columns = NUL
   )
   
   all_columns <- c(default_columns, custom_columns, maybe_etm)
-  
+  all_columns <- all_columns[all_columns%in%existing_cols]
   split_targets <- intersect(
     c("pMHC_classification", "pMHC_confidence", "pMHC_pvalues",
       "pMHC_wclone_pvalues", "pMHC_deltas", "pMHC_scaled_umis",
-      "epitope_type_multiple"),
+      maybe_etm),
     existing_cols
   )
   
@@ -164,13 +161,11 @@ extract_pairs <- function(object, include_negative = FALSE, custom_columns = NUL
   if (check_notation){
     if (length(split_targets) > 1) {
       
-      # count number of ":" items per column
       sep_counts <- md %>%
         mutate(row_id_original = row_number()) %>%
         mutate(across(all_of(split_targets), ~ ifelse(is.na(.x) | .x == "", 1L,
                                                       stringr::str_count(.x, ":") + 1L)))
       
-      # for each row, check if all split-target columns have same count
       inconsistent <- sep_counts %>%
         rowwise() %>%
         mutate(is_inconsistent = length(unique(c_across(all_of(split_targets)))) > 1) %>%
@@ -200,7 +195,7 @@ extract_pairs <- function(object, include_negative = FALSE, custom_columns = NUL
     }
   }
   
-  md %>%
+  pairs_df <- md %>%
     { if (!include_negative) filter(., pMHC_classification != "Negative" & !is.na(pMHC_classification)) else . } %>%
     filter(productive_beta & productive_alpha) %>%
     select(all_of(intersect(all_columns, existing_cols))) %>%
@@ -211,6 +206,35 @@ extract_pairs <- function(object, include_negative = FALSE, custom_columns = NUL
       tcr_pmhc = paste0(junction_beta, "_", junction_alpha, "_", peptide)
     ) %>%
     distinct()
+  
+  if (label_hla_match){
+    
+    if(is.null(object@misc$hla_genotypes)){
+      stop('hla genotypes areabsent in object@misc$hla_genotypes')
+    }
+    if (!(donor_col %in% custom_columns) | !(donor_col %in% colnames(object@misc$hla_genotypes))){
+      stop('to add hla mismatch info, make sure donor_col is in custom_annotations, it must have the same name with the first column and your metadata')
+    }
+     
+    hlas <- object@misc$hla_genotypes
+    
+    pairs_df <- pairs_df %>% left_join(hlas, by = donor_col) %>%
+      rowwise() %>%
+      mutate(
+        hla_match = case_when(
+          all(is.na(c(`HLA-A1`, `HLA-A2`,
+                      `HLA-B1`, `HLA-B2`,
+                      `HLA-C1`, `HLA-C2`))) ~ NA,
+          
+          TRUE ~ HLA %in% c(`HLA-A1`, `HLA-A2`,
+                            `HLA-B1`, `HLA-B2`,
+                            `HLA-C1`, `HLA-C2`)
+        )
+      ) %>%
+      ungroup()
+  }
+  
+  return(pairs_df)
 }
 
 
@@ -231,7 +255,6 @@ extract_pairs_old <- function(object, include_negative = FALSE, custom_columns =
   md <- object@meta.data
   existing_cols <- colnames(md)
   
-  # include epitope_type_multiple only if present
   maybe_etm <- if ("epitope_type_multiple" %in% existing_cols) "epitope_type_multiple" else NULL
   
   default_columns <- c(
@@ -244,7 +267,6 @@ extract_pairs_old <- function(object, include_negative = FALSE, custom_columns =
   
   all_columns <- c(default_columns, custom_columns, maybe_etm)
   
-  # columns to split by ":" (only those that actually exist)
   split_targets <- intersect(
     c("pMHC_classification", "pMHC_confidence", "pMHC_pvalues",
       "pMHC_wclone_pvalues", "pMHC_deltas", "pMHC_scaled_umis",
@@ -340,13 +362,11 @@ calculate_pmhc_scaled_umis_and_deltas <- function(
   if (is.null(object@meta.data[[pmhc_class_col]]))
     stop(sprintf("meta.data missing '%s'", pmhc_class_col))
   
-  # pull matrices once
   pm_data  <- tryCatch(GetAssayData(object, assay = assay, layer = "data"),
                        error = function(e) GetAssayData(object, assay = assay, slot = "data"))
   pm_scale <- tryCatch(GetAssayData(object, assay = assay, layer = "scale.data"),
                        error = function(e) GetAssayData(object, assay = assay, slot = "scale.data"))
   
-  # map human-readable -> feature id (Barcode)
   pmhc_map <- NULL
   if (!is.null(object@misc$pmhc) && all(c("pmhc","Barcode") %in% colnames(object@misc$pmhc)))
     pmhc_map <- setNames(object@misc$pmhc$Barcode, object@misc$pmhc$pmhc)
@@ -378,8 +398,7 @@ calculate_pmhc_scaled_umis_and_deltas <- function(
     cl_idx <- which(object@meta.data[[clone_col]] == cl)
     if (!length(cl_idx)) return(make_row(cl, "Negative", "Negative"))
     
-    # tokens = your already-found outliers
-    cls <- unique(stats::na.omit(object@meta.data[[pmhc_class_col]][cl_idx]))
+     cls <- unique(stats::na.omit(object@meta.data[[pmhc_class_col]][cl_idx]))
     if (!length(cls) || cls[1] %in% c("Negative","")) return(make_row(cl, "Negative", "Negative"))
     
     toks <- strsplit(cls[1], ":", fixed = TRUE)[[1]]
@@ -392,23 +411,19 @@ calculate_pmhc_scaled_umis_and_deltas <- function(
     m_data   <- Matrix::rowMeans(pm_data[,  cl_cells, drop = FALSE])
     m_scale  <- Matrix::rowMeans(pm_scale[, cl_cells, drop = FALSE])
     
-    # ensure names exist (some combos drop them)
     if (is.null(names(m_data)))  names(m_data)  <- rownames(pm_data)
     if (is.null(names(m_scale))) names(m_scale) <- rownames(pm_scale)
     
-    # order features to tokens order and keep only present
-    feats <- feats[feats %in% names(m_data)]
+     feats <- feats[feats %in% names(m_data)]
     if (!length(feats)) return(make_row(cl, "Negative", "Negative"))
     
-    # scaled_umis: raw means from @data
     scaled_str <- paste(round(m_data[feats], 3), collapse = ":")
     
-    # deltas: clamp negatives, normalize, pos - mean(others)
     v <- m_scale
     v[!is.finite(v)] <- 0
     v <- pmax(v, 0)
     norm_all <- normalize_vector(v)
-    names(norm_all) <- names(v)  # keep names after normalization
+    names(norm_all) <- names(v)  
     
     others <- setdiff(names(norm_all), feats)
     bg_mean <- if (length(others)) mean(norm_all[others], na.rm = TRUE) else 0
@@ -423,7 +438,6 @@ calculate_pmhc_scaled_umis_and_deltas <- function(
   if (verbose) close(pb)
   
   df <- do.call(rbind, res)
-  # remove any old versions of these columns, then join fresh
   pmhc_cols_re <- sprintf("^(%s|%s)$", out_scaled_col, out_delta_col)
   
   object@meta.data <- object@meta.data %>%
@@ -555,12 +569,10 @@ mask_pmhc_to_screen <- function(
     stop("object@misc$pmhc is missing; expected multimer annotation table there.")
   }
   
-  # Pull counts (sparse) and convert to dense so we can write NAs
-  X <- SeuratObject::GetAssayData(object, assay = assay, slot = "counts")
+   X <- SeuratObject::GetAssayData(object, assay = assay, slot = "counts")
   barcodes <- rownames(X)
   cells    <- colnames(X)
   
-  # ---- Get multimer map from misc
   multimer_map <- object@misc$pmhc
   mm <- multimer_map %>%
     dplyr::select(!!barcode_col, !!dict_hla_col) %>%
@@ -570,7 +582,6 @@ mask_pmhc_to_screen <- function(
       !!dict_hla_col := as.character(!!rlang::sym(dict_hla_col))
     )
   
-  # Align rows to assay barcodes
   mm_rows <- dplyr::right_join(
     mm,
     tibble::tibble(!!barcode_col := barcodes),
@@ -583,12 +594,10 @@ mask_pmhc_to_screen <- function(
   }
   hla_by_row <- mm_rows[[dict_hla_col]]
   
-  # ---- Build donor per column
   md <- object@meta.data
   if (!donor_col %in% colnames(md)) stop("meta.data has no column: ", donor_col)
   donors_by_cell <- md[[donor_col]][match(cells, rownames(md))]
   
-  # ---- donor → allowed HLA
   keyed <- screened_hla %>%
     dplyr::mutate(
       donor_key = as.character(.data$donor_id),
@@ -603,7 +612,6 @@ mask_pmhc_to_screen <- function(
     keyed$donor_key
   )
   
-  # ---- Mask disallowed rows per donor
   M <- as.matrix(X)
   rows_by_hla <- split(seq_along(hla_by_row), hla_by_row)
   
@@ -620,7 +628,6 @@ mask_pmhc_to_screen <- function(
     M[disallowed_rows, cols_d] <- NA_real_
   }
   
-  # ---- add as new assay
   M <-  Matrix(M, sparse = TRUE)
   new_assay <- SeuratObject::CreateAssayObject(counts = M)
   object[["pMHC_masked"]] <- new_assay

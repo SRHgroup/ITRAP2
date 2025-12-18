@@ -97,7 +97,6 @@ ScaleDataNoOutliers <- function(object, slot = 'counts', assay = 'pMHC',
   initial_outliers <- sum(abs(scale2(umi_matrix, sd_fun = sd)) > outlier, na.rm = TRUE)
   current_outliers <- initial_outliers
   
-  # Initialize progress bar only if verbose is TRUE
   if (verbose) {
     pb <- txtProgressBar(min = 0, max = initial_outliers, style = 3)
   }
@@ -114,14 +113,12 @@ ScaleDataNoOutliers <- function(object, slot = 'counts', assay = 'pMHC',
     sds_iter[[paste0('iteration=', iter)]] <- apply(umi_matrix, 1, sd, na.rm = TRUE)
     means_iter[[paste0('iteration=', iter)]] <- apply(umi_matrix, 1, mean, na.rm = TRUE)
     
-    # Update for progress bar only if verbose is TRUE
     if (verbose) {
       current_outliers <- sum(abs(scale2(umi_matrix, sd_fun = sd)) > outlier, na.rm = TRUE)
       setTxtProgressBar(pb, initial_outliers - current_outliers)
     }
   }
   
-  # Close the progress bar only if verbose is TRUE
   if (verbose) {
     close(pb)
   }
@@ -164,10 +161,8 @@ cap_high_outliers <- function(values, upper_quantile = 0.95, replacement = "quan
   upper_threshold <- quantile(values, upper_quantile, na.rm = TRUE)
   
   if (replacement == "quantile") {
-    # Replace with the upper quantile threshold
     values[values > upper_threshold] <- upper_threshold
   } else if (replacement == "mean") {
-    # Replace with the mean of non-outliers
     non_outliers <- values[values <= upper_threshold]
     values[values > upper_threshold] <- mean(non_outliers, na.rm = TRUE)
   } else {
@@ -205,7 +200,6 @@ cap_high_outliers <- function(values, upper_quantile = 0.95, replacement = "quan
 #'
 #' @export
 
-# Define the function as an S3 method for Seurat class
 smooth_pmhc <- function(object, assay = 'pMHC', cap_upper_quantiles=T,
                         cl_size_thresh = 3, normalise = FALSE, span_val = 1, replace_ones=F,
                         degree_val = 1, family_val = "symmetric", replacement_q=.85, verbose = TRUE) {
@@ -251,7 +245,6 @@ smooth_pmhc <- function(object, assay = 'pMHC', cap_upper_quantiles=T,
   
   clone_assignments <- object@meta.data[smoothable_cells,]$clone_id
   
-  # Initialize the progress bar if verbose is TRUE
   if (verbose) {
     total_iterations <- length(bigger_thanXclones)
     pb <- txtProgressBar(min = 0, max = total_iterations, style = 3, width = 50, char = "+")
@@ -279,13 +272,10 @@ smooth_pmhc <- function(object, assay = 'pMHC', cap_upper_quantiles=T,
       ratio_zero <- sum(counts == 0)/length(counts)
       one_outlier <- sum(counts < 0) == 1 | ratio_zero > 0.9
       if (replace_ones & one_outlier){
-        #counts <- runif(length(counts), min = .Machine$double.eps, max = 1e-10)
         smoothed_counts[pmhc,][clone_cells] <- rep(0, length(counts))
       }
       
       error_occurred <- tryCatch({
-        # Apply custom parameters if available
-        ######
         if (cap_upper_quantiles){
           counts <- cap_high_outliers(counts, upper_quantile = replacement_q)
         }
@@ -296,7 +286,6 @@ smooth_pmhc <- function(object, assay = 'pMHC', cap_upper_quantiles=T,
           object@commands$smooth_pmhc[[clone_id]] <- 'done'
         }, silent = TRUE)
         
-        # If there is an error, retry with the "gaussian" family
         if("try-error" %in% class(t)) {
           if (family_val == "symmetric") {
             t_gaussian <- try({
@@ -377,10 +366,8 @@ tcr_pmhc_permutation.test <- function(pmhc_mat, barcodes_to_test,
   
   cl_size <- length(clone_coords)
   
-  # submatrix once
   sub_obs <- pmhc_mat[, clone_coords, drop = FALSE]
   
-  # ensure names so subsetting by barcodes works even for 1-row matrices
   observed_means <- setNames(rowMeans(sub_obs), rownames(sub_obs))[barcodes_to_test]
   observed_stabs <- setNames(rowMeans(sub_obs > stab_z), rownames(sub_obs))[barcodes_to_test]
   
@@ -657,7 +644,6 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', clones_to_analy
                                          z_score_threshold = z_score_threshold)
       }
       
-      # Combine single-gem data with clone_bulk if it exists
       if (!is.null(clone_bulk)) {
         clone_bulk <- cbind(clone_bulk, single_gems)
       } else {
@@ -709,7 +695,6 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', clones_to_analy
         rosnerTest2(scores, k = kmax, alpha = rosner_alpha, pval_dist=rosner_pval_dist,
                     params = params, remove_for_params = remove_for_params)
       }, error = function(e) {
-        # On error, assign negative confidence and p-values, then skip to next iteration
         rosner <- 'failed'
       })
       
@@ -745,7 +730,6 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', clones_to_analy
       extreme_p <- tryCatch({
         extreme_outlier_test(x = scores, type = extreme_type, double_loc_scale = double_loc_scale)
       }, error = function(e) {
-        # On error, assign negative confidence and p-values, then skip to next iteration
         extreme_p <- 'failed'
       })
       
@@ -914,9 +898,6 @@ check_pmhc_consistency <- function(object, sep = ":", stop_on_error = FALSE) {
     return(tibble::tibble())
   }
   
-  # robust token counter:
-  # - coerces to character
-  # - treats NA, "", "Negative", and literal "NA" as 0 tokens
   cnt <- function(x) {
     sx <- as.character(x)
     if (length(sx) == 0L || is.na(sx) || sx == "" || sx == "Negative" || sx == "NA") return(0L)
