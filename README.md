@@ -1,5 +1,5 @@
-# ITRAP2 
-## Seurat-integrated R workflow for denoising and assignment of TCR–pMHC specificities from single-cell pMHC multimer data.
+## ITRAP2 
+### Seurat-integrated R workflow for denoising and assignment of TCR–pMHC specificities from single-cell pMHC multimer data.
 
 The package is intended for T-cell scientists and Seurat users, working on single-cell assignments of TCR specificities. 
 
@@ -69,7 +69,7 @@ object <- ScaleDataNoOutliers(object)
 ```
 ### 3) Per-clone smoothing
 
-For the next step, we would like you to store your clonotype information in object@metadata$clone_id. We will perform an extra denoising step on every expanded clone.
+For the next step, please store your clonotype information in object@metadata$clone_id. We will perform an extra denoising step on every expanded clone.
 Next, scaled counts are subjected to smoothing using local regression. The scaled matrix will be updated in object@assays$pMHC@scale.data.
 
 ```R
