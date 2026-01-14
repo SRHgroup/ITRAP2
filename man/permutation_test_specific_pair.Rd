@@ -11,6 +11,7 @@ permutation_test_specific_pair(
   drop.na = F,
   clone = NULL,
   full_tcr = NULL,
+  perm_test_adj_method = "BH",
   ...
 )
 }

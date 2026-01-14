@@ -28,6 +28,7 @@ assign_pmhc(
   filter_by_zscore_big_clones = FALSE,
   adjust_permutation = FALSE,
   adjust_test_within_clone = FALSE,
+  perm_test_adj_method = "none",
   padj_method = "BH",
   z_score_threshold = 2,
   calculate_pvalue = TRUE,

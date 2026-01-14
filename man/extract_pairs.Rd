@@ -8,7 +8,9 @@ extract_pairs(
   object,
   include_negative = FALSE,
   custom_columns = NULL,
-  check_notation = FALSE
+  check_notation = FALSE,
+  label_hla_match = FALSE,
+  donor_col = "BC"
 )
 }
 \arguments{

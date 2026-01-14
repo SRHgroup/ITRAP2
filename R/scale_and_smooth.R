@@ -362,7 +362,7 @@ filter_by_z_score <- function(scaled_mat, z_score_threshold){
 tcr_pmhc_permutation.test <- function(pmhc_mat, barcodes_to_test, 
                                       clone_coords, stab_z=1, df=4,
                                       sample_permutation='within_pmhc',
-                                      n_permutations=1000, p_adj_method='BH') {
+                                      n_permutations=1000, p_adj_method='none') {
   
   cl_size <- length(clone_coords)
   
@@ -422,7 +422,7 @@ tcr_pmhc_permutation.test <- function(pmhc_mat, barcodes_to_test,
 #'
 #' @export
 permutation_test_specific_pair <- function(object, bc_or_pmhc, use_pmhc=T, drop.na=F,
-                                           clone=NULL, full_tcr=NULL, ...){
+                                           clone=NULL, full_tcr=NULL, perm_test_adj_method='BH', ...){
   
   pmhc_mat <- GetAssayData(object, layer = 'data', assay = 'pMHC')
   
@@ -448,7 +448,7 @@ permutation_test_specific_pair <- function(object, bc_or_pmhc, use_pmhc=T, drop.
                                         barcodes_to_test=bc_or_pmhc,
                                         sample_permutation='within_pmhc',
                                         clone_coords=clone_coords, 
-                                        p_adj_method = 'none',
+                                        p_adj_method = perm_test_adj_method,
                                         ...)
   
   return(p_values)
@@ -560,7 +560,8 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', clones_to_analy
                         cl_size_thresh=3, entropy_thresh=1, kmax=10, rosner_alpha=0.01, rosner_pval_dist='t',
                         extreme_alpha=0.001, delta_threshold = 1, pseudobulk_fun=median, n_tests=10, extreme_type = 'regular',
                         double_loc_scale=F, filter_by_zscore=FALSE, filter_by_zscore_big_clones=FALSE,
-                        adjust_permutation = FALSE, adjust_test_within_clone = FALSE, padj_method = "BH",
+                        adjust_permutation = FALSE, adjust_test_within_clone = FALSE, 
+                        perm_test_adj_method = 'none', padj_method = "BH",
                         z_score_threshold=2, calculate_pvalue=TRUE, calculate_confidence_score=TRUE,
                         alpha=1, beta=1, gamma=1, delta=1, force=F, print_clone_id=FALSE, verbose=TRUE, ...) {
   library(shades)
@@ -771,7 +772,7 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', clones_to_analy
           pmhc_mat = pmhc_mat,
           barcodes_to_test = names(outliers),
           sample_permutation = "within_pmhc",
-          p_adj_method = "none",
+          p_adj_method = perm_test_adj_method,
           clone_coords = clone_coords
         )
       },
@@ -934,3 +935,4 @@ check_pmhc_consistency <- function(object, sep = ":", stop_on_error = FALSE) {
   
   issues
 }
+
