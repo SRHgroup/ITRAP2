@@ -1,6 +1,8 @@
 ## ITRAP2 
 ### Seurat-integrated R workflow for denoising and assignment of TCR–pMHC specificities from single-cell pMHC multimer data.
 
+ITRAP2 is now out on [bioRxiv](https://www.biorxiv.org/content/10.64898/2025.12.19.695506v2).
+
 The package is intended for T-cell scientists and Seurat users, working on single-cell assignments of TCR specificities. 
 
 This repository is public, and the tool is available for free for academic use.
@@ -97,3 +99,13 @@ object@meta.data %>%
   head(10)
 ```
 ![Screenshot 2024-03-27 at 10 54 10](https://github.com/SRHgroup/pmhc_denioseR/assets/45093246/15395c3c-0970-4605-a404-5484a1e94109)
+
+### Citation
+
+If you use **ITRAP2** in your research, please cite the corresponding paper:
+
+Grigorii Nos *et al.*  
+*ITRAP2: [ITRAP2, a flexible and robust strategy to assign antigen recognition of T-cells in coupled single-cell TCR-pMHC assay]*  
+bioRxiv (2025)  
+https://www.biorxiv.org/content/10.64898/2025.12.19.695506v2
+
