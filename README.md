@@ -1,6 +1,6 @@
-Seurat-integrated R workflow (private repo install)
+Seurat-integrated R workflow for TCR-pMHC pairing.
 
-The workflow is intended for T-cell scientists and Seurat users, who want to analyze their pMHC data.
+The workflow is intended for T-cell scientists and Seurat users who want to analyze their pMHC data.
 This repository is private until we post on bioRxiv. To install, collaborators in SRHgroup need a GitHub Personal Access Token (PAT).
 
 One-time setup (inside R)
@@ -38,8 +38,9 @@ devtools::install_github("SRHgroup/ITRAP2")
 ```
 
 Minimal vignette: denoising and assignment
+For a more detailed vignette, please check out vignettes/Simple_case_vignette.html
 
-Prerequisites
+The prerequisites
 object is a Seurat object with a pMHC assay. (object@assays$pMHC)
 Clonotypes available (store as object$clone_id).
 A pMHC barcode annotation table in object@misc$pmhc (columns like: Barcode, HLA, Sequence, Virus, Protein, pmhc).
