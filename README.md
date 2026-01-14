@@ -1,17 +1,17 @@
-ITRAP2 is a Seurat-integrated R workflow for denoising and assignment of TCR–pMHC specificities from single-cell pMHC multimer data.
+# ITRAP2 
+## Seurat-integrated R workflow for denoising and assignment of TCR–pMHC specificities from single-cell pMHC multimer data.
 
 The package is intended for T-cell scientists and Seurat users, working on single-cell assignments of TCR specificities. 
 
 This repository is public, and the tool is available for free for academic use.
 Contributions via pull requests and issue reports are welcome. 
 
-Install the package
+### Install the package
 ```R
 devtools::install_github("SRHgroup/ITRAP2")
 ```
 
-
-Dependency notes
+#### Dependency notes
 
 Some dependencies are Bioconductor packages and may not be installed automatically, depending on the local R setup.
 If you encounter errors such as:
@@ -19,6 +19,7 @@ If you encounter errors such as:
 Error in library(shades) : there is no package called ‘shades’
 Error in library(ComplexHeatmap) : there is no package called ‘ComplexHeatmap’for this version of R
 ```
+
 Install them manually
 ```R
 install.packages('BiocManager') # if it's not installed already
@@ -31,7 +32,7 @@ devtools::install_github('SRHgroup/ITRAP2')
 ```
 
 
-Minimal vignette: denoising and assignment
+### Minimal vignette: denoising and assignment
 
 For a detailed walkthrough, see:
 vignettes/Simple_case_vignette.html
@@ -45,15 +46,18 @@ The input object must satisfy the following:
 Clonotype information stored as object$clone_id
 
 A pMHC barcode annotation table stored in object@misc$pmhc
-(columns such as: Barcode, HLA, Sequence, Virus, Protein, pmhc)
+(columns such as: `Barcode`, `HLA`, `Sequence`, `Virus`, `Protein`, `pmhc`)
 
 ≥ 20 distinct pMHC barcodes per experiment are recommended for stable panel-based assignments
 
-1) Estimate per-pMHC noise (for downstream confidence scoring)
+### 1) Estimate per-pMHC noise (for downstream confidence scoring)
+Calculates Entropy, or noisiness level for each pMHC
 ```R
 object <- score_pmhc_noise(object)
 # Adds/updates per-pMHC noise metrics used to compute TCR–pMHC confidence later.
 ```
+
+### 2) Scaling
 
 The package employs a specific way of mean centering and sd scaling, where means and sds are calculated without outliers. 
 Used as an alternative to median and mad, since in sparse datasets they often end up as 0.
@@ -63,6 +67,7 @@ The scaled pMHC counts matrix will be stored in object@assays$pMHC@scale.data
 ```R
 object <- ScaleDataNoOutliers(object)
 ```
+### 3) Per-clone smoothing
 
 For the next step, we would like you to store your clonotype information in object@metadata$clone_id. We will perform an extra denoising step on every expanded clone.
 Next, scaled counts are subjected to smoothing using local regression. The scaled matrix will be updated in object@assays$pMHC@scale.data.
@@ -70,6 +75,7 @@ Next, scaled counts are subjected to smoothing using local regression. The scale
 ```R
 object <- smooth_pmhc(object)
 ```
+### 4) Testing each pMHC for each clonotype, to assign antigen-specificity
 
 Next, we want to label each expanded clone with pMHC specificity. We do that by doing the outlier search within your pMHC panel. Since we look at the relative to your pMHC panel values, 
 we expect that you have at least 20 different pMHC barcodes in your experiment; otherwise, the pMHC assignments with this function might be flawed. For the assignments, we also want you to
