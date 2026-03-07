@@ -17,6 +17,53 @@ assert_col_has_non_na <- function(df, col) {
   assert_true(sum(!is.na(df[[col]])) > 0, sprintf("Column %s is all NA", col))
 }
 
+normalize_pairs <- function(df) {
+  df <- tibble::as_tibble(df) %>%
+    dplyr::mutate(dplyr::across(dplyr::everything(), ~ as.character(.x)))
+  sort_cols <- sort(colnames(df))
+  df %>% dplyr::arrange(dplyr::across(dplyr::all_of(sort_cols)))
+}
+
+compare_or_write_expected_pairs <- function(pairs_df, expected_path = "scripts/smoke_test_expected_pairs.tsv") {
+  pairs_norm <- normalize_pairs(pairs_df)
+  
+  if (!file.exists(expected_path)) {
+    readr::write_tsv(pairs_norm, expected_path)
+    step(sprintf("Wrote baseline expected pairs: %s", expected_path))
+    return(invisible(TRUE))
+  }
+  
+  expected <- readr::read_tsv(expected_path, show_col_types = FALSE, col_types = readr::cols(.default = "c"))
+  expected_norm <- normalize_pairs(expected)
+  
+  same_columns <- identical(colnames(expected_norm), colnames(pairs_norm))
+  same_rows <- nrow(expected_norm) == nrow(pairs_norm)
+  same_content <- same_columns && same_rows && identical(as.data.frame(expected_norm), as.data.frame(pairs_norm))
+  
+  if (!same_content) {
+    out_dir <- "scripts/output"
+    dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+    latest_path <- file.path(out_dir, "smoke_test_pairs_latest.tsv")
+    readr::write_tsv(pairs_norm, latest_path)
+    
+    warning(
+      sprintf(
+        paste0(
+          "extract_pairs output changed vs baseline expected file (%s). ",
+          "Current snapshot written to %s. ",
+          "expected_rows=%d, current_rows=%d, same_columns=%s"
+        ),
+        expected_path, latest_path, nrow(expected_norm), nrow(pairs_norm), same_columns
+      ),
+      call. = FALSE
+    )
+  } else {
+    step("extract_pairs output matches baseline expected pairs")
+  }
+  
+  invisible(TRUE)
+}
+
 load_itrap2 <- function() {
   if (requireNamespace("ITRAP2", quietly = TRUE)) {
     suppressPackageStartupMessages(library(ITRAP2))
@@ -95,6 +142,7 @@ pairs <- extract_pairs(
   custom_columns = c("BC", "cdr3_beta", "cdr3_alpha")
 )
 assert_true(is.data.frame(pairs), "extract_pairs did not return a data.frame")
+compare_or_write_expected_pairs(pairs)
 
 step("Smoke test passed")
 message("\nOK: workflow executed without errors and expected pMHC outputs are present.")

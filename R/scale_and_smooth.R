@@ -481,32 +481,30 @@ permutation_test_specific_pair <- function(object, bc_or_pmhc, use_pmhc=T, drop.
 #'
 #' @export
 adjust_pmhc_pvalues <- function(df, adjust_permutation, adjust_test_within_clone, method = "BH") {
-  
-  library(purrr)
-  
+
   df_long <- df %>%
-    separate_rows(c(pMHC_classification, pMHC_pvalues, 
-                    pMHC_wclone_pvalues, pMHC_confidence, 
-                    pMHC_deltas, pMHC_scaled_umis), sep=":")
+    tidyr::separate_rows(c(pMHC_classification, pMHC_pvalues, 
+                           pMHC_wclone_pvalues, pMHC_confidence, 
+                           pMHC_deltas, pMHC_scaled_umis), sep=":")
   
   if (adjust_permutation) {
     df_long <- df_long %>%
-      group_by(clone_id) %>%
-      mutate(pMHC_pvalues = p.adjust(pMHC_pvalues, method = method)) %>%
-      ungroup()
+      dplyr::group_by(clone_id) %>%
+      dplyr::mutate(pMHC_pvalues = p.adjust(pMHC_pvalues, method = method)) %>%
+      dplyr::ungroup()
   }
   
   if (adjust_test_within_clone) {
     df_long <- df_long %>%
-      group_by(clone_id) %>%
-      mutate(pMHC_wclone_pvalues = p.adjust(pMHC_wclone_pvalues, method = method)) %>%
-      ungroup()
+      dplyr::group_by(clone_id) %>%
+      dplyr::mutate(pMHC_wclone_pvalues = p.adjust(pMHC_wclone_pvalues, method = method)) %>%
+      dplyr::ungroup()
   }
   
   df_wide <- df_long %>%
-    group_by(clone_id) %>%
-    summarise(across(starts_with("pMHC_"), ~paste(., collapse = ":"), .names = "collapsed_{col}")) %>%
-    rename_with(~ gsub("^collapsed_", "", .), starts_with("collapsed_"))
+    dplyr::group_by(clone_id) %>%
+    dplyr::summarise(dplyr::across(dplyr::starts_with("pMHC_"), ~paste(., collapse = ":"), .names = "collapsed_{col}")) %>%
+    dplyr::rename_with(~ gsub("^collapsed_", "", .), dplyr::starts_with("collapsed_"))
   
   return(df_wide)
 }
@@ -569,9 +567,7 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', clones_to_analy
                         perm_test_adj_method = 'none', padj_method = "BH",
                         z_score_threshold=2, calculate_pvalue=TRUE, calculate_confidence_score=TRUE,
                         alpha=1, beta=1, gamma=1, delta=1, force=F, print_clone_id=FALSE, verbose=TRUE, ...) {
-  library(shades)
-  library(EnvStats)
-  
+
   if (cl_size_thresh<2) {
     stop('cl_size_thresh must be minimum 2')
   }
@@ -697,8 +693,6 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', clones_to_analy
       }
       
       rosner <- tryCatch({
-        library(shades)
-        library(EnvStats)
         rosnerTest2(scores, k = kmax, alpha = rosner_alpha, pval_dist=rosner_pval_dist,
                     params = params, remove_for_params = remove_for_params)
       }, error = function(e) {

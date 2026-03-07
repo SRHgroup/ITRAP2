@@ -1,6 +1,3 @@
-library(shades)
-library(EnvStats)
-
 #' Rosner's Test for Outliers
 #'
 #' Perform Rosner's generalized extreme Studentized deviate test for up to 
@@ -175,7 +172,7 @@ rosnerTest2 <- function(x, k = 3, alpha = 0.05, warn = TRUE, pval_dist = 't',
   ret.list <- list(distribution = distribution, statistic = stat, 
                    sample.size = n, parameters = c(k = k), alpha = alpha, 
                    crit.value = crit.value, n.outliers = n.outliers, alternative = paste("Up to ", 
-                                                                                         k, " observations are not\n", space(33), "from the same Distribution.", 
+                                                                                         k, " observations are not\n", strrep(" ", 33), "from the same Distribution.", 
                                                                                          sep = ""), method = "Rosner's Test for Outliers", 
                    data = x, data.name = data.name, bad.obs = bad.obs, all.stats = out.df)
   oldClass(ret.list) <- "gofOutlier"
@@ -295,4 +292,3 @@ extreme_outlier_test <- function(x, type='regular', double_loc_scale=F){
   
   return(pvalues)
 }
-

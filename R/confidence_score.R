@@ -396,14 +396,10 @@ calculate_confidence <- function(entropy, concordances, clone_size, deltas, repl
 #'
 #' @export
 filter_pmhc <- function(object, condition = NULL, condition_scope = NULL, custom_column = character()) {
-  library(dplyr)
-  library(tidyr)
-  library(rlang)
-  library(stringr)
-  
+
    if (is.null(object@commands$pmhc_filter)) {
     object@meta.data <- object@meta.data %>%
-      mutate(
+      dplyr::mutate(
         pMHC_classification_unf = pMHC_classification,
         pMHC_confidence_unf     = pMHC_confidence,
         pMHC_pvalues_unf        = pMHC_pvalues,
@@ -413,7 +409,7 @@ filter_pmhc <- function(object, condition = NULL, condition_scope = NULL, custom
       )
   } else {
     object@meta.data <- object@meta.data %>%
-      mutate(
+      dplyr::mutate(
         pMHC_classification     = pMHC_classification_unf,
         pMHC_confidence         = pMHC_confidence_unf,
         pMHC_pvalues            = pMHC_pvalues_unf,
@@ -435,25 +431,25 @@ filter_pmhc <- function(object, condition = NULL, condition_scope = NULL, custom
       clone_id, clone_size,
       tidyselect::all_of(custom_column)
     ) %>%
-    filter(!is.na(pMHC_classification) & pMHC_classification != "Negative") %>%
-    separate_rows(
+    dplyr::filter(!is.na(pMHC_classification) & pMHC_classification != "Negative") %>%
+    tidyr::separate_rows(
       pMHC_classification, pMHC_confidence, pMHC_pvalues, 
       pMHC_wclone_pvalues, pMHC_deltas, pMHC_scaled_umis,
       sep = ":"
     ) %>%
-    mutate(
+    dplyr::mutate(
       pMHC_confidence     = suppressWarnings(as.numeric(pMHC_confidence)),
       pMHC_pvalues        = suppressWarnings(as.numeric(pMHC_pvalues)),
       pMHC_wclone_pvalues = suppressWarnings(as.numeric(pMHC_wclone_pvalues)),
       pMHC_deltas         = suppressWarnings(as.numeric(pMHC_deltas)),
       pMHC_scaled_umis    = suppressWarnings(as.numeric(pMHC_scaled_umis))
     ) %>%
-    mutate(
+    dplyr::mutate(
       pMHC_confidence     = ifelse(is.na(pMHC_confidence) | pMHC_confidence <= 0, -Inf, pMHC_confidence),
       pMHC_pvalues        = ifelse(is.na(pMHC_pvalues),        Inf,  pMHC_pvalues),
       pMHC_wclone_pvalues = ifelse(is.na(pMHC_wclone_pvalues), Inf,  pMHC_wclone_pvalues)
         ) %>%
-    distinct()
+    dplyr::distinct()
   
   replacements <- c(
     "\\bpvalues\\b"         = "pMHC_pvalues",
@@ -463,18 +459,18 @@ filter_pmhc <- function(object, condition = NULL, condition_scope = NULL, custom
     "\\bdeltas\\b"          = "pMHC_deltas",
     "\\bscaled_umis\\b"     = "pMHC_scaled_umis"
   )
-  condition_parsed <- if (is.null(condition)) "TRUE" else str_replace_all(condition, replacements)
-  condition_scope_parsed <- if (is.null(condition_scope)) "TRUE" else str_replace_all(condition_scope, replacements)
+  condition_parsed <- if (is.null(condition)) "TRUE" else stringr::str_replace_all(condition, replacements)
+  condition_scope_parsed <- if (is.null(condition_scope)) "TRUE" else stringr::str_replace_all(condition_scope, replacements)
   
   cond_expr  <- rlang::parse_expr(condition_parsed)        
   scope_expr <- rlang::parse_expr(condition_scope_parsed)   
   
   filtered_long <- meta_long %>%
-    mutate(
+    dplyr::mutate(
       .scope = !!scope_expr,
       .valid = dplyr::if_else(.scope, dplyr::coalesce(!!cond_expr, FALSE), TRUE)
     ) %>%
-    filter(.valid)
+    dplyr::filter(.valid)
   
   # warning if we drop >80% of pMHC classifications 
   baseline_n <- nrow(meta_long)
@@ -483,9 +479,9 @@ filter_pmhc <- function(object, condition = NULL, condition_scope = NULL, custom
     loss_prop <- (baseline_n - after_n) / baseline_n
     if (loss_prop >= 0.80) {
       per_clone <- filtered_long %>%
-        count(clone_id, name = "kept") %>%
-        right_join(count(meta_long, clone_id, name = "total"), by = "clone_id") %>%
-        mutate(kept = tidyr::replace_na(kept, 0L),
+        dplyr::count(clone_id, name = "kept") %>%
+        dplyr::right_join(dplyr::count(meta_long, clone_id, name = "total"), by = "clone_id") %>%
+        dplyr::mutate(kept = tidyr::replace_na(kept, 0L),
                kept_ratio = kept / total)
       n_all_dropped <- sum(per_clone$kept == 0)
       
@@ -500,8 +496,8 @@ filter_pmhc <- function(object, condition = NULL, condition_scope = NULL, custom
   }
   
   meta_filtered_collapsed <- filtered_long %>%
-    group_by(clone_id) %>%
-    summarise(
+    dplyr::group_by(clone_id) %>%
+    dplyr::summarise(
       pMHC_classification     = paste(pMHC_classification,     collapse = ":"),
       pMHC_confidence         = paste(pMHC_confidence,         collapse = ":"),
       pMHC_pvalues            = paste(pMHC_pvalues,            collapse = ":"),
