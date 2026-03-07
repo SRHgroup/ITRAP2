@@ -6,6 +6,7 @@
 #' @param mat A numeric matrix (`matrix`).
 #' @param sd_fun, function (`function`) that calculates sd, functions are expected to
 #' have na.rm parameter to remove NA values
+#' @param replace_zero (`logical`) if TRUE, replaces zero SD values with 1e-4 before scaling.
 #'
 #' @return a mean ceantered and median scaled matrix (`matrix`)
 #'
@@ -14,7 +15,7 @@
 #' scale2(mat, sd_fun=sd)
 #'
 #' @export
-scale2 <- function(mat, sd_fun = sd) {
+scale2 <- function(mat, sd_fun = sd, replace_zero = FALSE) {
   
   if(is.vector(mat)) {
     mean <- mean(mat, na.rm = T)
@@ -28,6 +29,9 @@ scale2 <- function(mat, sd_fun = sd) {
   else {
     means <- apply(mat, 1, mean, na.rm = T)
     sds <- apply(mat, 1, function(x) sd_fun(x, na.rm = T))
+    if (replace_zero) {
+      sds[sds == 0] <- .0001
+    }
     
     return( (mat - means) / sds )
   }
@@ -86,7 +90,8 @@ ScaleDataNoOutliers <- function(object, slot = 'counts', assay = 'pMHC',
     stop("The provided object is not a Seurat object.")
   }
   
-  umi_matrix <- GetAssayData(object, assay = assay, layer = slot)
+  input_matrix <- GetAssayData(object, assay = assay, layer = slot)
+  umi_matrix <- input_matrix
   iter0 <- apply(umi_matrix, 1, sd, na.rm = TRUE)
   mean_iter0 <- apply(umi_matrix, 1, mean, na.rm = TRUE)
   iter <- 0
@@ -142,10 +147,10 @@ ScaleDataNoOutliers <- function(object, slot = 'counts', assay = 'pMHC',
   sds <- apply(sds_iter, 1, get_last_nonzero)
   
   centered <- as.matrix(
-    object@assays$pMHC@counts - apply(umi_matrix, 1, mean, na.rm = TRUE)
+    input_matrix - apply(umi_matrix, 1, mean, na.rm = TRUE)
   )
   
-  object@assays$pMHC@data <- centered / sds
+  object@assays[[assay]]@data <- centered / sds
   
   object@commands$ScaleDataNoOutliers <- TRUE
   
@@ -255,24 +260,24 @@ smooth_pmhc <- function(object, assay = 'pMHC', cap_upper_quantiles=T,
   object@commands$smooth_pmhc <- list()
   
   for (clone_id in bigger_thanXclones) {
-    clone_cells <- smoothable_cells[which(clone_assignments == clone_id)]
+    clone_idx <- which(clone_assignments == clone_id)
+    clone_cells <- smoothable_cells[clone_idx]
     
     for (pmhc in pmhcs) {
-      counts <- scaled_counts[pmhc,][clone_cells]
+      counts <- scaled_counts[pmhc, clone_idx]
       
       if (all(is.nan(counts) | is.na(counts))){
         next
       }
       
-      raw_counts <- raw_countss[pmhc,][clone_cells]
-      smoothed_counts[pmhc,][clone_cells] <- counts
+      smoothed_counts[pmhc, clone_idx] <- counts
       
       
       
       ratio_zero <- sum(counts == 0)/length(counts)
       one_outlier <- sum(counts < 0) == 1 | ratio_zero > 0.9
       if (replace_ones & one_outlier){
-        smoothed_counts[pmhc,][clone_cells] <- rep(0, length(counts))
+        smoothed_counts[pmhc, clone_idx] <- rep(0, length(counts))
       }
       
       error_occurred <- tryCatch({
@@ -282,7 +287,7 @@ smooth_pmhc <- function(object, assay = 'pMHC', cap_upper_quantiles=T,
         t <- try({
           loess_fit <- loess(counts ~ seq_along(counts), normalize = normalise, 
                              span = span_val, degree = degree_val, family = family_val)
-          smoothed_counts[pmhc,][clone_cells] <- predict(loess_fit)
+          smoothed_counts[pmhc, clone_idx] <- predict(loess_fit)
           object@commands$smooth_pmhc[[clone_id]] <- 'done'
         }, silent = TRUE)
         
@@ -291,7 +296,7 @@ smooth_pmhc <- function(object, assay = 'pMHC', cap_upper_quantiles=T,
             t_gaussian <- try({
               loess_fit <- loess(counts ~ seq_along(counts), normalize = normalise, 
                                  span = span_val, degree = degree_val, family = "gaussian")
-              smoothed_counts[pmhc,][clone_cells] <- predict(loess_fit)
+              smoothed_counts[pmhc, clone_idx] <- predict(loess_fit)
               object@commands$smooth_pmhc[[clone_id]] <- 'done_with_gaussian'
             }, silent = TRUE)
             
@@ -476,32 +481,30 @@ permutation_test_specific_pair <- function(object, bc_or_pmhc, use_pmhc=T, drop.
 #'
 #' @export
 adjust_pmhc_pvalues <- function(df, adjust_permutation, adjust_test_within_clone, method = "BH") {
-  
-  library(purrr)
-  
+
   df_long <- df %>%
-    separate_rows(c(pMHC_classification, pMHC_pvalues, 
-                    pMHC_wclone_pvalues, pMHC_confidence, 
-                    pMHC_deltas, pMHC_scaled_umis), sep=":")
+    tidyr::separate_rows(c(pMHC_classification, pMHC_pvalues, 
+                           pMHC_wclone_pvalues, pMHC_confidence, 
+                           pMHC_deltas, pMHC_scaled_umis), sep=":")
   
   if (adjust_permutation) {
     df_long <- df_long %>%
-      group_by(clone_id) %>%
-      mutate(pMHC_pvalues = p.adjust(pMHC_pvalues, method = method)) %>%
-      ungroup()
+      dplyr::group_by(clone_id) %>%
+      dplyr::mutate(pMHC_pvalues = p.adjust(pMHC_pvalues, method = method)) %>%
+      dplyr::ungroup()
   }
   
   if (adjust_test_within_clone) {
     df_long <- df_long %>%
-      group_by(clone_id) %>%
-      mutate(pMHC_wclone_pvalues = p.adjust(pMHC_wclone_pvalues, method = method)) %>%
-      ungroup()
+      dplyr::group_by(clone_id) %>%
+      dplyr::mutate(pMHC_wclone_pvalues = p.adjust(pMHC_wclone_pvalues, method = method)) %>%
+      dplyr::ungroup()
   }
   
   df_wide <- df_long %>%
-    group_by(clone_id) %>%
-    summarise(across(starts_with("pMHC_"), ~paste(., collapse = ":"), .names = "collapsed_{col}")) %>%
-    rename_with(~ gsub("^collapsed_", "", .), starts_with("collapsed_"))
+    dplyr::group_by(clone_id) %>%
+    dplyr::summarise(dplyr::across(dplyr::starts_with("pMHC_"), ~paste(., collapse = ":"), .names = "collapsed_{col}")) %>%
+    dplyr::rename_with(~ gsub("^collapsed_", "", .), dplyr::starts_with("collapsed_"))
   
   return(df_wide)
 }
@@ -564,9 +567,7 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', clones_to_analy
                         perm_test_adj_method = 'none', padj_method = "BH",
                         z_score_threshold=2, calculate_pvalue=TRUE, calculate_confidence_score=TRUE,
                         alpha=1, beta=1, gamma=1, delta=1, force=F, print_clone_id=FALSE, verbose=TRUE, ...) {
-  library(shades)
-  library(EnvStats)
-  
+
   if (cl_size_thresh<2) {
     stop('cl_size_thresh must be minimum 2')
   }
@@ -666,6 +667,7 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', clones_to_analy
     cat('\nassigning pMHC-TCR pairs\n')
   }
   clone_outliers <- list()
+  data_layer <- GetAssayData(object, assay = assay, layer = "data")
   ##################
   ####  L O O P ####
   ##################
@@ -691,8 +693,6 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', clones_to_analy
       }
       
       rosner <- tryCatch({
-        library(shades)
-        library(EnvStats)
         rosnerTest2(scores, k = kmax, alpha = rosner_alpha, pval_dist=rosner_pval_dist,
                     params = params, remove_for_params = remove_for_params)
       }, error = function(e) {
@@ -759,7 +759,7 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', clones_to_analy
       within_clone_pvalues <- round(extreme_p[which(extreme_p<extreme_alpha)], digits = 3)
     }
     
-    pmhc_mat <- GetAssayData(object, assay = assay, layer = 'data')[names(outliers),]
+    pmhc_mat <- data_layer[names(outliers), , drop = FALSE]
     
     if (is.null(dim(pmhc_mat))) {
       pmhc_mat <- matrix(pmhc_mat, nrow = 1, byrow = TRUE,
@@ -785,8 +785,8 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', clones_to_analy
     }
     
     entropy <- object@misc$noise_score[names(outliers),]$entropy
-    concordance <- calculate_pmhc_concordance(clone_obj = subset(object, clone_id == colnames(clone_bulk)[i]), 
-                                              assay=assay, slot='data')
+    clone_data <- data_layer[, clone_coords, drop = FALSE]
+    concordance <- calculate_pmhc_concordance(clone_data, assay = assay, slot = "data")
     
     concordance <- concordance[names(outliers)]
     
@@ -935,4 +935,3 @@ check_pmhc_consistency <- function(object, sep = ":", stop_on_error = FALSE) {
   
   issues
 }
-

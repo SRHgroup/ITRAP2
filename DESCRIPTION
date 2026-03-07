@@ -8,6 +8,7 @@ Description: ITRAP2 is a data denoising workflow for single-cell pMHC datasets. 
              pMHC specificities to individual clonotypes. ITRAP2 works with coupled single-cell pMHC counts with TCR clonotypes.
 Imports: 
     Seurat,
+    SeuratObject,
     tidyverse,
     ggplot2,
     uniformly,
@@ -15,7 +16,9 @@ Imports:
     RColorBrewer, 
     circlize, 
     cowplot, 
-    uniformly,
+    randomcoloR,
+    patchwork,
+    extRemes,
     EnvStats
 Suggests: 
     knitr,

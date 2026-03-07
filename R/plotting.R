@@ -25,38 +25,34 @@
 clonal_pmhc_heatmap <- function(data_matrix, fontsize=8, 
                                 heatmap_legend_side = "left", 
                                 hm_legent_direction = 'vertical') {
-  
-  library(ComplexHeatmap)
-  library(RColorBrewer)
-  library(grid)
-  
+
    if (!is.matrix(data_matrix)) {
     data_matrix <- as.matrix(data_matrix)
   }
   
-  heatmap_plot <- Heatmap(
+  heatmap_plot <- ComplexHeatmap::Heatmap(
     data_matrix, 
     cluster_rows = FALSE,
     cluster_columns = FALSE, 
     show_row_names = TRUE,
     row_names_side = 'left',
     show_column_names = FALSE, 
-    row_names_gp = gpar(fontsize = fontsize), 
-    column_names_gp = gpar(fontsize = 10), 
-    rect_gp = gpar(col = "grey", lwd = 0.2), 
+    row_names_gp = grid::gpar(fontsize = fontsize), 
+    column_names_gp = grid::gpar(fontsize = 10), 
+    rect_gp = grid::gpar(col = "grey", lwd = 0.2), 
     heatmap_legend_param = list(
       title = "UMI counts",
-      legend_width = unit(2, "cm"), 
-      legend_height = unit(4, "cm"), 
+      legend_width = grid::unit(2, "cm"), 
+      legend_height = grid::unit(4, "cm"), 
       color_bar = "continuous", 
       position=heatmap_legend_side,
       direction=hm_legent_direction,
-      legend_main_gp = gpar(fontsize = 10),
-      legend_gp = gpar(fontsize = 8) 
+      legend_main_gp = grid::gpar(fontsize = 10),
+      legend_gp = grid::gpar(fontsize = 8) 
     )
   )
   
-  heatmap_grob <- grid.grabExpr(draw(heatmap_plot, heatmap_legend_side = heatmap_legend_side))
+  heatmap_grob <- grid::grid.grabExpr(ComplexHeatmap::draw(heatmap_plot, heatmap_legend_side = heatmap_legend_side))
   heatmap_gg <- cowplot::ggdraw() + cowplot::draw_plot(heatmap_grob)
   
   return(heatmap_gg)
@@ -261,11 +257,7 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
                          show_legend_ann=FALSE, bugged_width=.6, max_cols=16000, 
                          left_ann_vars=NULL, left_ann_palette=NULL, save_to_disc_highlight=F,
                          verbose=T, lwd=2, flip=FALSE, skip_bugged_frames=F, ...) {
-  
-  library(randomcoloR)
-  library(circlize)
-  library(ComplexHeatmap)
-  
+
   if(length(clones) == 0) {
     stop("list of clonotypes in `clone` argument is empty")
   }
@@ -371,7 +363,7 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
     }
   }
   
-  col_fun = colorRamp2(hm_breaks, hm_palette)
+  col_fun = circlize::colorRamp2(hm_breaks, hm_palette)
   
   if (ncol(pmhc_subset_) > max_cols) {
     set.seed(123) 
@@ -543,7 +535,7 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
     
     left_ann_df <- left_ann_df[rownames(pmhc_mat_ordered), , drop = FALSE]
     
-    left_ann <- rowAnnotation(
+    left_ann <- ComplexHeatmap::rowAnnotation(
       df  = left_ann_df,
       col = left_ann_palette
     )
@@ -565,7 +557,7 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
     row_ann_df <- ann_subset_ordered[, c("clone_id", cust_cols_present), drop = FALSE]
     stopifnot(identical(rownames(row_ann_df), rownames(pmhc_mat_ordered)))
     
-    left_ann <- rowAnnotation(
+    left_ann <- ComplexHeatmap::rowAnnotation(
       df  = row_ann_df,
       col = color_list,
       show_legend = rep(show_legend_ann, length.out = ncol(row_ann_df))  # hide/show per track
@@ -573,7 +565,7 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
     
     if (!is.null(left_ann_vars)) {
       top_ann_df <- left_ann_df[colnames(pmhc_mat_ordered), , drop = FALSE]
-      hm22ann <- HeatmapAnnotation(
+      hm22ann <- ComplexHeatmap::HeatmapAnnotation(
         df   = top_ann_df,
         col  = left_ann_palette,
         which = "column",
@@ -586,7 +578,7 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
   
   show_row_names2    <- if (flip) FALSE else show_row_names
   show_column_names <- if (flip) TRUE else FALSE
-  pmhc_subset_hmap <- Heatmap(
+  pmhc_subset_hmap <- ComplexHeatmap::Heatmap(
     pmhc_mat_ordered, name = "pmhc_tcr_hmap", 
     show_heatmap_legend = show_heatmap_legend, 
     row_split = split_rows, column_split = split_cols,
@@ -595,7 +587,7 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
     col = col_fun, na_col = na_col,
     cluster_rows = F, cluster_columns = F,
     row_names_gp = grid::gpar(fontsize = rowm.fonts),  
-    column_title_gp = gpar(fontsize = column_title_fonts), 
+    column_title_gp = grid::gpar(fontsize = column_title_fonts), 
     column_title_rot = column_title_rot,
     top_annotation=hm22ann, left_annotation = left_ann)
   
@@ -610,7 +602,7 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
     if (!is.null(split_cols)){
       stop('Highlighting specificities in the clone split heatmap is not supported')
     }
-    draw(pmhc_subset_hmap)
+    ComplexHeatmap::draw(pmhc_subset_hmap)
     tcr_pmhc <- ann_subset_ordered %>%
       dplyr::select(clone_id, !!sym(highlight_column)) %>%
       filter(!is.na(.data[[highlight_column]]), .data[[highlight_column]] != 'Negative') %>%
@@ -673,7 +665,7 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
             x = x_center, y = y_center,
             width = width, height = height,
             just = c("center", "center"),
-            gp = gpar(col = highlight_color, lwd = lwd, fill = NA)
+            gp = grid::gpar(col = highlight_color, lwd = lwd, fill = NA)
           )
         })
       } else {
@@ -703,7 +695,7 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
           grid.rect(
             x = x, y = y_center, width = width, height = height,
             just = c("left", "center"),
-            gp = gpar(col = highlight_color, lwd = lwd, fill = NA)
+            gp = grid::gpar(col = highlight_color, lwd = lwd, fill = NA)
           )
         })
       }
@@ -769,11 +761,7 @@ pmhc_heatmap_old <- function(object, clones, patient=NULL, slot='counts', assay 
                          show_row_names=T, pmhc_subset=NULL, custom_annotations=c(), skip_bugged_frames=F, 
                          show_legend_ann=c(F, T, T), bugged_width=.6, max_cols=16000, left_ann_vars=NULL, 
                          left_ann_palette=NULL, verbose=T, lwd=2, ...) {
-  
-  library(randomcoloR)
-  library(circlize)
-  library(ComplexHeatmap)
-  
+
   if(length(clones) == 0) {
     stop("list of clonotypes in `clone` argument is empty")
   }
@@ -850,7 +838,7 @@ pmhc_heatmap_old <- function(object, clones, patient=NULL, slot='counts', assay 
     }
   }
   
-  col_fun = colorRamp2(hm_breaks, hm_palette)
+  col_fun = circlize::colorRamp2(hm_breaks, hm_palette)
   
   if (ncol(pmhc_subset_) > max_cols) {
     set.seed(123) 
@@ -890,7 +878,7 @@ pmhc_heatmap_old <- function(object, clones, patient=NULL, slot='counts', assay 
         color_list[[ann_col]] <- annotation_colors[[ann_col]]
       } else {
         unique_values <- unique(ann_subset_ordered[[ann_col]]) %>% na.omit()
-        color_list[[ann_col]] <- setNames(distinctColorPalette(length(unique_values)), unique_values)
+        color_list[[ann_col]] <- setNames(randomcoloR::distinctColorPalette(length(unique_values)), unique_values)
       }
     }
   }
@@ -977,7 +965,7 @@ pmhc_heatmap_old <- function(object, clones, patient=NULL, slot='counts', assay 
     
     left_ann_df <- left_ann_df[rownames(pmhc_mat_ordered), , drop = FALSE]
     
-    left_ann <- rowAnnotation(
+    left_ann <- ComplexHeatmap::rowAnnotation(
       df  = left_ann_df,
       col = left_ann_palette
     )
@@ -990,7 +978,7 @@ pmhc_heatmap_old <- function(object, clones, patient=NULL, slot='counts', assay 
     pmhc_mat_ordered <-  pmhc_mat_ordered[nonna,]
   }
   
-  pmhc_subset_hmap <- Heatmap(
+  pmhc_subset_hmap <- ComplexHeatmap::Heatmap(
     pmhc_mat_ordered, name = "pmhc_tcr_hmap", 
     show_heatmap_legend = show_heatmap_legend, 
     row_split = split_rows, column_split = split_cols,
@@ -998,7 +986,7 @@ pmhc_heatmap_old <- function(object, clones, patient=NULL, slot='counts', assay 
     col = col_fun, na_col = na_col,
     cluster_rows = F, cluster_columns = F,
     row_names_gp = grid::gpar(fontsize = rowm.fonts),  
-    column_title_gp = gpar(fontsize = column_title_fonts), 
+    column_title_gp = grid::gpar(fontsize = column_title_fonts), 
     column_title_rot = column_title_rot,
     top_annotation=hm22ann, left_annotation = left_ann)
   
@@ -1012,7 +1000,7 @@ pmhc_heatmap_old <- function(object, clones, patient=NULL, slot='counts', assay 
     if (!is.null(split_cols)){
       stop('Highlighting specificities in the clone split heatmap is not supported')
     }
-    draw(pmhc_subset_hmap)
+    ComplexHeatmap::draw(pmhc_subset_hmap)
     tcr_pmhc <- ann_subset_ordered %>%
       dplyr::select(clone_id, !!sym(highlight_column)) %>%
       filter(!is.na(.data[[highlight_column]]), .data[[highlight_column]] != 'Negative') %>%
@@ -1053,7 +1041,7 @@ pmhc_heatmap_old <- function(object, clones, patient=NULL, slot='counts', assay 
         
         grid.rect(x = x, y = y, width = width, height = height,
                   just = c("left", "center"), 
-                  gp = gpar(col = "green", lwd = lwd, fill = NA))
+                  gp = grid::gpar(col = "green", lwd = lwd, fill = NA))
       })
       
       if (verbose) setTxtProgressBar(pb, i)
@@ -1257,9 +1245,7 @@ plot_vdj_segment_frequency <- function(data, chain = "beta", segment = "v_call",
 #' @export
 plot_tcr_pmhc_permutation <- function(object, clone, assay = 'pMHC', 
                                       slot='data', stab_z=1, n_permutations=1000){
-  
-  library(patchwork)
-  
+
   clone_coords <- which(object$clone_id == clone)
   clone_size <- object$clone_size[object$clone_id == clone] %>% drop.na() %>% unique() 
   
@@ -1380,4 +1366,3 @@ pmhc_volcano_plot <- function(meta, conf_threshold=.5, pval_threshold=-log10(0.0
   
   return(plot)
 }
-

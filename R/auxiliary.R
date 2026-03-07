@@ -26,10 +26,12 @@ ClonePseudobulk <- function(object, assay="pMHC", slot="scale.data",
                             filter_by_zscore=FALSE, FUN=median) {
   
   if (filter_by_zscore){
-    warning("filter_by_zscore should only be used if slot='scale.data'")
+    if (slot != "scale.data") {
+      warning("filter_by_zscore should only be used if slot='scale.data'")
+    }
     cells <- Cells(object)
     cells_to_subset <- apply(GetAssayData(object = object, assay = assay, layer = slot), 
-                             2, function(x) any(x > threshold))
+                             2, function(x) any(x > z_score_threshold))
     cells_subset <- cells[cells_to_subset]
     object <- subset(object, cells = cells_subset)
   }
@@ -627,4 +629,3 @@ mask_pmhc_to_screen <- function(
   attr(object, "pMHC_masked_matrix") <- M
   return(object)
 }
-
