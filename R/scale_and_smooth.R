@@ -672,40 +672,6 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', clones_to_analy
   }
   clone_outliers <- list()
   data_layer <- GetAssayData(object, assay = assay, layer = "data")
-  
-  calc_concordance_from_data <- function(pmhc_counts, exclude_top_pmhc = TRUE,
-                                         z_score_c = 1, fraction_c = 0.5) {
-    calc_concordance <- function(data) {
-      max_vals <- apply(data, 2, max, na.rm = TRUE)
-      max_counts <- apply(data, 1, function(row) sum(row == max_vals, na.rm = TRUE))
-      max_counts / ncol(data)
-    }
-    
-    concordance <- calc_concordance(pmhc_counts)
-    
-    if (exclude_top_pmhc) {
-      npos <- apply(pmhc_counts > z_score_c, 1, function(x) sum(x) / length(x)) %>% sort(decreasing = TRUE)
-      reactions <- names(npos[npos > fraction_c])
-      top_index <- names(concordance)[which.max(concordance)]
-      
-      if (length(reactions) > 1) {
-        if (!top_index %in% reactions) {
-          reactions <- c(top_index, reactions)
-        }
-        if (reactions[1] != top_index) {
-          reactions <- c(top_index, reactions[-which(reactions == top_index)])
-        }
-        for (i in 2:length(reactions)) {
-          exclude_indices <- match(reactions[1:(i - 1)], rownames(pmhc_counts))
-          remaining_counts <- pmhc_counts[-c(exclude_indices), , drop = FALSE]
-          adjusted_concordance <- calc_concordance(remaining_counts)
-          concordance[reactions[i]] <- adjusted_concordance[reactions[i]]
-        }
-      }
-    }
-    
-    concordance
-  }
   ##################
   ####  L O O P ####
   ##################
@@ -826,7 +792,7 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', clones_to_analy
     
     entropy <- object@misc$noise_score[names(outliers),]$entropy
     clone_data <- data_layer[, clone_coords, drop = FALSE]
-    concordance <- calc_concordance_from_data(clone_data)
+    concordance <- calculate_pmhc_concordance(clone_data, assay = assay, slot = "data")
     
     concordance <- concordance[names(outliers)]
     

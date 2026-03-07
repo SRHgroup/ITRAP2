@@ -207,7 +207,14 @@ calculate_pmhc_concordance <- function(clone_obj, exclude_top_pmhc = TRUE,
     stop("The parameter 'exclude_top_pmhc' must be a single Boolean value (TRUE or FALSE).")
   }
   
-  pmhc_counts <- GetAssayData(clone_obj, layer = slot, assay = assay)
+  if (is(clone_obj, "Seurat")) {
+    pmhc_counts <- GetAssayData(clone_obj, layer = slot, assay = assay)
+  } else if (is.matrix(clone_obj) || inherits(clone_obj, "Matrix")) {
+    pmhc_counts <- clone_obj
+  } else {
+    stop("clone_obj must be a Seurat object or a matrix-like pMHC matrix.")
+  }
+  
   if (!is.null(preserve_pmhc)){
     pmhc_counts <- pmhc_counts[preserve_pmhc,]
   }
@@ -613,4 +620,3 @@ recalculate_confidence <- function(object, assay='pMHC', slot='scale.data', ...)
     
   return(object)
 }
-
