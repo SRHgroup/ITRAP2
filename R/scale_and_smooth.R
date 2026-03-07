@@ -260,24 +260,24 @@ smooth_pmhc <- function(object, assay = 'pMHC', cap_upper_quantiles=T,
   object@commands$smooth_pmhc <- list()
   
   for (clone_id in bigger_thanXclones) {
-    clone_cells <- smoothable_cells[which(clone_assignments == clone_id)]
+    clone_idx <- which(clone_assignments == clone_id)
+    clone_cells <- smoothable_cells[clone_idx]
     
     for (pmhc in pmhcs) {
-      counts <- scaled_counts[pmhc,][clone_cells]
+      counts <- scaled_counts[pmhc, clone_idx]
       
       if (all(is.nan(counts) | is.na(counts))){
         next
       }
       
-      raw_counts <- raw_countss[pmhc,][clone_cells]
-      smoothed_counts[pmhc,][clone_cells] <- counts
+      smoothed_counts[pmhc, clone_idx] <- counts
       
       
       
       ratio_zero <- sum(counts == 0)/length(counts)
       one_outlier <- sum(counts < 0) == 1 | ratio_zero > 0.9
       if (replace_ones & one_outlier){
-        smoothed_counts[pmhc,][clone_cells] <- rep(0, length(counts))
+        smoothed_counts[pmhc, clone_idx] <- rep(0, length(counts))
       }
       
       error_occurred <- tryCatch({
@@ -287,7 +287,7 @@ smooth_pmhc <- function(object, assay = 'pMHC', cap_upper_quantiles=T,
         t <- try({
           loess_fit <- loess(counts ~ seq_along(counts), normalize = normalise, 
                              span = span_val, degree = degree_val, family = family_val)
-          smoothed_counts[pmhc,][clone_cells] <- predict(loess_fit)
+          smoothed_counts[pmhc, clone_idx] <- predict(loess_fit)
           object@commands$smooth_pmhc[[clone_id]] <- 'done'
         }, silent = TRUE)
         
@@ -296,7 +296,7 @@ smooth_pmhc <- function(object, assay = 'pMHC', cap_upper_quantiles=T,
             t_gaussian <- try({
               loess_fit <- loess(counts ~ seq_along(counts), normalize = normalise, 
                                  span = span_val, degree = degree_val, family = "gaussian")
-              smoothed_counts[pmhc,][clone_cells] <- predict(loess_fit)
+              smoothed_counts[pmhc, clone_idx] <- predict(loess_fit)
               object@commands$smooth_pmhc[[clone_id]] <- 'done_with_gaussian'
             }, silent = TRUE)
             
