@@ -6,6 +6,7 @@
 #' @param mat A numeric matrix (`matrix`).
 #' @param sd_fun, function (`function`) that calculates sd, functions are expected to
 #' have na.rm parameter to remove NA values
+#' @param replace_zero (`logical`) if TRUE, replaces zero SD values with 1e-4 before scaling.
 #'
 #' @return a mean ceantered and median scaled matrix (`matrix`)
 #'
@@ -14,7 +15,7 @@
 #' scale2(mat, sd_fun=sd)
 #'
 #' @export
-scale2 <- function(mat, sd_fun = sd) {
+scale2 <- function(mat, sd_fun = sd, replace_zero = FALSE) {
   
   if(is.vector(mat)) {
     mean <- mean(mat, na.rm = T)
@@ -28,6 +29,9 @@ scale2 <- function(mat, sd_fun = sd) {
   else {
     means <- apply(mat, 1, mean, na.rm = T)
     sds <- apply(mat, 1, function(x) sd_fun(x, na.rm = T))
+    if (replace_zero) {
+      sds[sds == 0] <- .0001
+    }
     
     return( (mat - means) / sds )
   }
@@ -86,7 +90,8 @@ ScaleDataNoOutliers <- function(object, slot = 'counts', assay = 'pMHC',
     stop("The provided object is not a Seurat object.")
   }
   
-  umi_matrix <- GetAssayData(object, assay = assay, layer = slot)
+  input_matrix <- GetAssayData(object, assay = assay, layer = slot)
+  umi_matrix <- input_matrix
   iter0 <- apply(umi_matrix, 1, sd, na.rm = TRUE)
   mean_iter0 <- apply(umi_matrix, 1, mean, na.rm = TRUE)
   iter <- 0
@@ -142,10 +147,10 @@ ScaleDataNoOutliers <- function(object, slot = 'counts', assay = 'pMHC',
   sds <- apply(sds_iter, 1, get_last_nonzero)
   
   centered <- as.matrix(
-    object@assays$pMHC@counts - apply(umi_matrix, 1, mean, na.rm = TRUE)
+    input_matrix - apply(umi_matrix, 1, mean, na.rm = TRUE)
   )
   
-  object@assays$pMHC@data <- centered / sds
+  object@assays[[assay]]@data <- centered / sds
   
   object@commands$ScaleDataNoOutliers <- TRUE
   
@@ -666,6 +671,41 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', clones_to_analy
     cat('\nassigning pMHC-TCR pairs\n')
   }
   clone_outliers <- list()
+  data_layer <- GetAssayData(object, assay = assay, layer = "data")
+  
+  calc_concordance_from_data <- function(pmhc_counts, exclude_top_pmhc = TRUE,
+                                         z_score_c = 1, fraction_c = 0.5) {
+    calc_concordance <- function(data) {
+      max_vals <- apply(data, 2, max, na.rm = TRUE)
+      max_counts <- apply(data, 1, function(row) sum(row == max_vals, na.rm = TRUE))
+      max_counts / ncol(data)
+    }
+    
+    concordance <- calc_concordance(pmhc_counts)
+    
+    if (exclude_top_pmhc) {
+      npos <- apply(pmhc_counts > z_score_c, 1, function(x) sum(x) / length(x)) %>% sort(decreasing = TRUE)
+      reactions <- names(npos[npos > fraction_c])
+      top_index <- names(concordance)[which.max(concordance)]
+      
+      if (length(reactions) > 1) {
+        if (!top_index %in% reactions) {
+          reactions <- c(top_index, reactions)
+        }
+        if (reactions[1] != top_index) {
+          reactions <- c(top_index, reactions[-which(reactions == top_index)])
+        }
+        for (i in 2:length(reactions)) {
+          exclude_indices <- match(reactions[1:(i - 1)], rownames(pmhc_counts))
+          remaining_counts <- pmhc_counts[-c(exclude_indices), , drop = FALSE]
+          adjusted_concordance <- calc_concordance(remaining_counts)
+          concordance[reactions[i]] <- adjusted_concordance[reactions[i]]
+        }
+      }
+    }
+    
+    concordance
+  }
   ##################
   ####  L O O P ####
   ##################
@@ -759,7 +799,7 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', clones_to_analy
       within_clone_pvalues <- round(extreme_p[which(extreme_p<extreme_alpha)], digits = 3)
     }
     
-    pmhc_mat <- GetAssayData(object, assay = assay, layer = 'data')[names(outliers),]
+    pmhc_mat <- data_layer[names(outliers), , drop = FALSE]
     
     if (is.null(dim(pmhc_mat))) {
       pmhc_mat <- matrix(pmhc_mat, nrow = 1, byrow = TRUE,
@@ -785,8 +825,8 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', clones_to_analy
     }
     
     entropy <- object@misc$noise_score[names(outliers),]$entropy
-    concordance <- calculate_pmhc_concordance(clone_obj = subset(object, clone_id == colnames(clone_bulk)[i]), 
-                                              assay=assay, slot='data')
+    clone_data <- data_layer[, clone_coords, drop = FALSE]
+    concordance <- calc_concordance_from_data(clone_data)
     
     concordance <- concordance[names(outliers)]
     
@@ -935,4 +975,3 @@ check_pmhc_consistency <- function(object, sep = ":", stop_on_error = FALSE) {
   
   issues
 }
-
