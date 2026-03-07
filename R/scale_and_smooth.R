@@ -759,7 +759,7 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', clones_to_analy
       within_clone_pvalues <- round(extreme_p[which(extreme_p<extreme_alpha)], digits = 3)
     }
     
-    pmhc_mat <- GetAssayData(object, assay = 'pMHC', layer = 'data')[names(outliers),]
+    pmhc_mat <- GetAssayData(object, assay = assay, layer = 'data')[names(outliers),]
     
     if (is.null(dim(pmhc_mat))) {
       pmhc_mat <- matrix(pmhc_mat, nrow = 1, byrow = TRUE,
@@ -786,7 +786,7 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', clones_to_analy
     
     entropy <- object@misc$noise_score[names(outliers),]$entropy
     concordance <- calculate_pmhc_concordance(clone_obj = subset(object, clone_id == colnames(clone_bulk)[i]), 
-                                              assay='pMHC', slot='data')
+                                              assay=assay, slot='data')
     
     concordance <- concordance[names(outliers)]
     

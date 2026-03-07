@@ -252,17 +252,15 @@ pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10, slot = 'counts
 pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'pMHC',
                          clones_order=NULL, column_split_var=NULL, split_rows=NULL,
                          highlight_pmhc.tcr=F, hm_breaks = NULL, hm_palette=c("blue", "white", "red"),
-                         clean_na_features=F, na_col = 'grey',
-                         pmhc_palette=NULL, pmhc_order=NULL,
+                         clean_na_features=F, na_col = 'grey', pmhc_palette=NULL, pmhc_order=NULL,
                          highlight_column="pMHC_classification", highlight_color='green',
                          stop_large_highlighting=T, show_heatmap_legend=T, rowm.fonts=8, column_title_fonts = 10, 
                          column_title_rot = 45, clean_mat=F, add_tcr_cluster=F, 
-                         show_row_names=T, pmhc_subset=NULL, 
+                         show_row_names=T, pmhc_subset=NULL, clean_na_cells = FALSE, 
                          custom_annotations=c(), custom_ann_palette=list(),  
                          show_legend_ann=FALSE, bugged_width=.6, max_cols=16000, 
-                         left_ann_vars=NULL, left_ann_palette=NULL,
-                         verbose=T, lwd=2, flip=FALSE,
-                         skip_bugged_frames=F, ...) {
+                         left_ann_vars=NULL, left_ann_palette=NULL, save_to_disc_highlight=F,
+                         verbose=T, lwd=2, flip=FALSE, skip_bugged_frames=F, ...) {
   
   library(randomcoloR)
   library(circlize)
@@ -285,7 +283,7 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
   arrange_cols <- c("clone_id", cust_cols)
   
   ann_subset <- object@meta.data %>%
-    select(all_of(ann_columns)) %>%
+    dplyr::select(all_of(ann_columns)) %>%
     filter(clone_id %in% clones) %>%
     arrange(!!!syms(arrange_cols))
   
@@ -296,7 +294,7 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
     { if(!is.null(patient)) filter(., grepl(patient, Patient)) else . } %>%
     pull(Barcode)
   
-  pat_pmhc <- pat_pmhc[pat_pmhc %in% rownames(object@assays$pMHC@counts)]
+  pat_pmhc <- pat_pmhc[pat_pmhc %in% rownames(object[[assay]]@counts)]
   
   pmhc_subset_ <- GetAssayData(object, layer = slot, assay = assay) %>% as.data.frame()
   pmhc_subset_ <- pmhc_subset_[,Cells(object)[object$clone_id %in% clones]][pat_pmhc,]
@@ -350,7 +348,7 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
       mutate(across(all_of(cust_cols_present),
                     ~ factor(trimws(as.character(.x)), levels = levels_for(cur_column(), .x)))) %>%
       arrange(clone_order_factor, across(all_of(cust_cols_present))) %>%
-      select(-clone_order_factor) %>%
+      dplyr::select(-clone_order_factor) %>%
       rownames_to_column('cell_id') %>%
       pull('cell_id')
   }
@@ -399,6 +397,21 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
   
   ann_subset_ordered <- ann_subset[cells_order,]
   pmhc_mat_ordered <- pmhc_mat[,cells_order]
+  
+    if (clean_na_cells) {
+    keep_cells <- colnames(pmhc_mat_ordered)[colSums(is.na(pmhc_mat_ordered)) == 0]
+
+    if (length(keep_cells) == 0) {
+      stop("clean_na_cells=TRUE removed all cells (every column had at least one NA).")
+    }
+
+    pmhc_mat_ordered    <- pmhc_mat_ordered[, keep_cells, drop = FALSE]
+    ann_subset_ordered  <- ann_subset_ordered[keep_cells, , drop = FALSE]
+
+    # keep internal ordering consistent for anything downstream
+    cells_order <- keep_cells
+  }
+
   
   cust_cols_present <- intersect(custom_annotations, colnames(ann_subset_ordered))
   
@@ -699,7 +712,13 @@ pmhc_heatmap <- function(object, clones, patient=NULL, slot='counts', assay = 'p
     
   }
   if (verbose) close(pb)
+  
+  if (save_to_disc_highlight){
+    return(pmhc_subset_hmap)
+  }
+   
 }
+
 #' Generate a Heatmap of pMHC Distribution Across Clones
 #'
 #' This function visualizes calues of peptide-MHC (pMHC) across different clones 
