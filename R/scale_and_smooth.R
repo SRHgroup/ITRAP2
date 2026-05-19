@@ -266,11 +266,20 @@ smooth_pmhc <- function(object, assay = 'pMHC', cap_upper_quantiles=T,
     for (pmhc in pmhcs) {
       counts <- scaled_counts[pmhc, clone_idx]
       
+      smoothed_counts[pmhc, clone_idx] <- counts
+      
       if (all(is.nan(counts) | is.na(counts))){
         next
       }
       
-      smoothed_counts[pmhc, clone_idx] <- counts
+      finite_counts <- counts[is.finite(counts)]
+      if (length(unique(finite_counts)) <= 1) {
+        next
+      }
+      
+      if (any(is.na(counts) | is.nan(counts))) {
+        counts[is.na(counts) | is.nan(counts)] <- mean(finite_counts)
+      }
       
       
       
