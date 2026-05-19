@@ -242,7 +242,7 @@ smooth_pmhc <- function(object, assay = 'pMHC', cap_upper_quantiles=T,
   scaled_counts <- GetAssayData(object, assay = assay, layer = 'data')
   raw_countss <- GetAssayData(object, assay = assay, layer = 'counts')
   pmhcs <- rownames(scaled_counts)
-  smoothed_counts <- matrix(0, nrow = length(pmhcs), ncol = length(smoothable_cells), dimnames = list(pmhcs, smoothable_cells))
+  smoothed_counts <- matrix(NA_real_, nrow = length(pmhcs), ncol = length(smoothable_cells), dimnames = list(pmhcs, smoothable_cells))
   
   unsmoothable_counts <- scaled_counts[, unsmoothable_cells]
   scaled_counts <- scaled_counts[, smoothable_cells]
@@ -331,7 +331,6 @@ smooth_pmhc <- function(object, assay = 'pMHC', cap_upper_quantiles=T,
   }
   
   smoothed_counts <- cbind(smoothed_counts, unsmoothable_counts)
-  smoothed_counts[is.nan(smoothed_counts)] <- 0
   object@assays[[assay]]@scale.data <- as.matrix(smoothed_counts[, Cells(object)])
   
   return(object)
@@ -373,8 +372,20 @@ tcr_pmhc_permutation.test <- function(pmhc_mat, barcodes_to_test,
   
   sub_obs <- pmhc_mat[, clone_coords, drop = FALSE]
   
-  observed_means <- setNames(rowMeans(sub_obs), rownames(sub_obs))[barcodes_to_test]
-  observed_stabs <- setNames(rowMeans(sub_obs > stab_z), rownames(sub_obs))[barcodes_to_test]
+  observed_means <- sapply(barcodes_to_test, function(pmhc) {
+    x <- sub_obs[pmhc, , drop = TRUE]
+    if (all(is.na(x))) {
+      return(NA_real_)
+    }
+    mean(x, na.rm = TRUE)
+  })
+  observed_stabs <- sapply(barcodes_to_test, function(pmhc) {
+    x <- sub_obs[pmhc, , drop = TRUE]
+    if (all(is.na(x))) {
+      return(NA_real_)
+    }
+    mean(x > stab_z, na.rm = TRUE)
+  })
   
   simulated_means <- matrix(NA, nrow = nrow(pmhc_mat), ncol = n_permutations)
   simulated_stabs <- matrix(NA, nrow = nrow(pmhc_mat), ncol = n_permutations)
@@ -395,12 +406,35 @@ tcr_pmhc_permutation.test <- function(pmhc_mat, barcodes_to_test,
     simulated_stabs[, i] <- rowMeans(sub_sim > stab_z, na.rm = T)
   }
   
-  means_p_values <- sapply(barcodes_to_test, 
-                           function(pmhc) mean(simulated_means[pmhc,] >= observed_means[pmhc], na.rm=T))
-  stabs_p_values <- sapply(barcodes_to_test, 
-                           function(pmhc) mean(simulated_stabs[pmhc,] >= observed_stabs[pmhc], na.rm=T))
+  means_p_values <- sapply(barcodes_to_test, function(pmhc) {
+    obs <- observed_means[pmhc]
+    sim <- simulated_means[pmhc, ]
+    if (is.na(obs) || all(is.na(sim))) {
+      return(NA_real_)
+    }
+    p <- mean(sim >= obs, na.rm = TRUE)
+    if (is.nan(p)) NA_real_ else p
+  })
+  stabs_p_values <- sapply(barcodes_to_test, function(pmhc) {
+    obs <- observed_stabs[pmhc]
+    sim <- simulated_stabs[pmhc, ]
+    if (is.na(obs) || all(is.na(sim))) {
+      return(NA_real_)
+    }
+    p <- mean(sim >= obs, na.rm = TRUE)
+    if (is.nan(p)) NA_real_ else p
+  })
   
   combined_p_values <- mapply(function(p1, p2) {
+    if (is.na(p1) || is.na(p2)) {
+      return(NA_real_)
+    }
+    if (p1 <= 0) {
+      p1 <- 1 / n_permutations
+    }
+    if (p2 <= 0) {
+      p2 <- 1 / n_permutations
+    }
     chi_sq_statistic <- -2 * (log(p1) + log(p2))
     pchisq(chi_sq_statistic, df = df, lower.tail = FALSE)
   }, means_p_values, stabs_p_values) 
