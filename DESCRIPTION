@@ -16,7 +16,6 @@ Imports:
     ComplexHeatmap, 
     RColorBrewer, 
     circlize, 
-    cowplot, 
     patchwork
 Suggests: 
     knitr,

@@ -20,7 +20,6 @@
 #' @importFrom ComplexHeatmap Heatmap
 #' @importFrom RColorBrewer brewer.pal
 #' @importFrom grid gpar unit
-#' @importFrom cowplot ggdraw draw_plot
 #' @export
 clonal_pmhc_heatmap <- function(data_matrix, fontsize=8, 
                                 heatmap_legend_side = "left", 
@@ -53,7 +52,7 @@ clonal_pmhc_heatmap <- function(data_matrix, fontsize=8,
   )
   
   heatmap_grob <- grid::grid.grabExpr(ComplexHeatmap::draw(heatmap_plot, heatmap_legend_side = heatmap_legend_side))
-  heatmap_gg <- cowplot::ggdraw() + cowplot::draw_plot(heatmap_grob)
+  heatmap_gg <- patchwork::wrap_elements(panel = heatmap_grob)
   
   return(heatmap_gg)
 }
@@ -73,7 +72,7 @@ clonal_pmhc_heatmap <- function(data_matrix, fontsize=8,
 #' @param xlimits An optional numeric vector of length 2 specifying the x-axis limits for the jitter plots. If NULL (default),
 #' x-axis limits are determined automatically.
 #'
-#' @return A cowplot object combining a heatmap of pMHC distribution, a jitter plot of UMI counts by feature, and a bar plot
+#' @return A patchwork object combining a heatmap of pMHC distribution, a jitter plot of UMI counts by feature, and a bar plot
 #' of concordance values for the pMHCs analyzed. This comprehensive visualization aids in understanding the distribution and
 #' concordance of pMHCs per clone.
 #'
@@ -85,7 +84,6 @@ clonal_pmhc_heatmap <- function(data_matrix, fontsize=8,
 #' @importFrom dplyr %>%
 #' @importFrom tidyr gather
 #' @importFrom ggplot2 ggplot geom_jitter geom_hline theme_classic labs geom_bar
-#' @importFrom cowplot plot_grid draw_label
 #' @export
 pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10, slot = 'counts', 
                                 xlimits=NULL, return_pmhcs=F, display_pvalues=F, 
@@ -155,17 +153,13 @@ pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10, slot = 'counts
           axis.text.y = element_text(size = conc_fontsize)) +
     xlim(0, 1)
   
-  combined_plot <- cowplot::plot_grid(
-    heatmap_gg, dists+ylab(''), conc_bp,
-    align = "h",
-    ncol = 3,
-    rel_widths = c(3, 6, 3.5), axis = 'l') 
+  combined_plot <- heatmap_gg + (dists + ylab('')) + conc_bp +
+    patchwork::plot_layout(ncol = 3, widths = c(3, 6, 3.5))
   
   title_text <- paste0('clonotype = ', clone, '; #gems=', ncol(pmhc_matrix))
   if (!is.null(extra_title)){
     title_text <- paste0(title_text, ', ', extra_title)
   }
-  title <- cowplot::ggdraw() + cowplot::draw_label(title_text, fontface='bold')
   
   if (display_pvalues){
     pvals <- permutation_test_specific_pair(object = object, bc_or_pmhc = preserve,  
@@ -185,11 +179,8 @@ pmhc_dist_per_clone <- function(object, clone, aggr_threshold=10, slot = 'counts
             axis.text.y = element_text(size = conc_fontsize)) +
       xlim(0, 4)
     
-    combined_plot <- cowplot::plot_grid(
-      heatmap_gg, dists+ylab(''), conc_bp, pvals_bp,
-      align = "h",
-      ncol = 4,
-      rel_widths = c(3, 4.5, 2.5, 2.5), axis = 'l') 
+    combined_plot <- heatmap_gg + (dists + ylab('')) + conc_bp + pvals_bp +
+      patchwork::plot_layout(ncol = 4, widths = c(3, 4.5, 2.5, 2.5))
   }
   
   if (return_pmhcs){

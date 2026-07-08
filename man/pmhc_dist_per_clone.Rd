@@ -37,7 +37,7 @@ Default is 'counts'.}
 x-axis limits are determined automatically.}
 }
 \value{
-A cowplot object combining a heatmap of pMHC distribution, a jitter plot of UMI counts by feature, and a bar plot
+A patchwork object combining a heatmap of pMHC distribution, a jitter plot of UMI counts by feature, and a bar plot
 of concordance values for the pMHCs analyzed. This comprehensive visualization aids in understanding the distribution and
 concordance of pMHCs per clone.
 }
