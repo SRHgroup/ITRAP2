@@ -38,7 +38,6 @@ pMHC specificities to individual clonotypes. ITRAP2 works with coupled single-ce
 ```{r load_packages, message=FALSE, warning=FALSE}
 library(Seurat)
 library(ITRAP2)
-library(uniformly)
 library(tidyverse)
 library(ggplot2)
 library(ComplexHeatmap)

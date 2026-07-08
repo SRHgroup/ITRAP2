@@ -4,7 +4,12 @@
 \alias{extreme_outlier_test}
 \title{Detect Outliers Using Extreme Value Theory}
 \usage{
-extreme_outlier_test(x, type = "regular", double_loc_scale = F)
+extreme_outlier_test(
+  x,
+  type = "regular",
+  double_loc_scale = F,
+  extreme_alpha = 0.001
+)
 }
 \arguments{
 \item{x}{Numeric vector of values to test for extreme outliers.}
@@ -15,6 +20,10 @@ extreme_outlier_test(x, type = "regular", double_loc_scale = F)
 \item \code{'reestimate_params'}: Iteratively re-estimates the distribution parameters, removing extreme values one at a time.
 \item \code{'extreme_without_tail'}: Estimates distribution parameters after removing the three highest values.
 }}
+
+\item{double_loc_scale}{Logical. If \code{TRUE}, doubles the fitted location and scale parameters before calculating p-values for \code{type = "regular"}.}
+
+\item{extreme_alpha}{Numeric significance threshold used when \code{type = "reestimate_params"}.}
 }
 \value{
 A numeric vector of p-values for each observation in \code{x}. Lower values indicate a higher likelihood of being an outlier.

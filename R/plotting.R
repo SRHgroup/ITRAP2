@@ -1140,7 +1140,6 @@ plot_smoothing <- function(object, clone_id, pmhc, ...){
 #' colors <- get_random_grid_colors(10)
 #' plot(1:10, pch=19, col=colors, cex=2)
 #'
-#' @importFrom uniformly runif_in_cube
 #' @export
 get_random_grid_colors <- function(ncolor,seed = 100) {
 
@@ -1158,6 +1157,25 @@ get_random_grid_colors <- function(ncolor,seed = 100) {
   }
   index <- sample(seq(1,nbox),ncolor)
   RGB[index]
+}
+
+runif_in_cube <- function(n, d, O = rep(0, d), r = 1) {
+  if (length(n) != 1 || length(d) != 1 || n < 1 || d < 1) {
+    stop("'n' and 'd' must be positive scalar values")
+  }
+  if (length(O) != d) {
+    stop("'O' must have length 'd'")
+  }
+  if (length(r) == 1) {
+    r <- rep(r, d)
+  }
+  if (length(r) != d || any(r < 0)) {
+    stop("'r' must be a non-negative scalar or a vector of length 'd'")
+  }
+
+  sims <- matrix(stats::runif(n * d, min = -1, max = 1), nrow = n, ncol = d)
+  sims <- sweep(sims, 2, r, `*`)
+  sweep(sims, 2, O, `+`)
 }
 
 

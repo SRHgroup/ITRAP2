@@ -10,14 +10,14 @@ Imports:
     Seurat,
     SeuratObject,
     tidyverse,
+    dplyr,
+    tidyr,
     ggplot2,
-    uniformly,
     ComplexHeatmap, 
     RColorBrewer, 
     circlize, 
     cowplot, 
-    patchwork,
-    extRemes,
+    patchwork
 Suggests: 
     knitr,
     rmarkdown

@@ -772,7 +772,12 @@ assign_pmhc <- function(object, slot='scale.data', assay='pMHC', clones_to_analy
     } else if (assignment == 'extreme_distribution') {
       
       extreme_p <- tryCatch({
-        extreme_outlier_test(x = scores, type = extreme_type, double_loc_scale = double_loc_scale)
+        extreme_outlier_test(
+          x = scores,
+          type = extreme_type,
+          double_loc_scale = double_loc_scale,
+          extreme_alpha = extreme_alpha
+        )
       }, error = function(e) {
         extreme_p <- 'failed'
       })

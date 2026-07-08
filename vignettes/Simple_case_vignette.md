@@ -20,7 +20,6 @@ ITRAP2 works with coupled single-cell pMHC counts with TCR clonotypes.
 ``` r
 library(Seurat)
 library(ITRAP2)
-library(uniformly)
 library(tidyverse)
 library(ggplot2)
 library(ComplexHeatmap)

@@ -223,6 +223,8 @@ cbind.no.warn <- function (..., deparse.level = 1)
 #'   - `'regular'` (default): Uses the estimated Gumbel distribution parameters.
 #'   - `'reestimate_params'`: Iteratively re-estimates the distribution parameters, removing extreme values one at a time.
 #'   - `'extreme_without_tail'`: Estimates distribution parameters after removing the three highest values.
+#' @param double_loc_scale Logical. If `TRUE`, doubles the fitted location and scale parameters before calculating p-values for `type = "regular"`.
+#' @param extreme_alpha Numeric significance threshold used when `type = "reestimate_params"`.
 #'
 #' @return A numeric vector of p-values for each observation in `x`. Lower values indicate a higher likelihood of being an outlier.
 #' If `reestimate_params` or `extreme_without_tail` is used, the function may return slightly different p-values based on the refined distribution.
@@ -234,19 +236,21 @@ cbind.no.warn <- function (..., deparse.level = 1)
 #' print(pvals)
 #'
 #' @export
-extreme_outlier_test <- function(x, type='regular', double_loc_scale=F){
+extreme_outlier_test <- function(x, type='regular', double_loc_scale=F, extreme_alpha=0.001){
   
-  extr <- extRemes::fevd(x = x, type = 'Gumbel')
-  location <- extr$results$par["location"]
-  scale <- extr$results$par["scale"]
+  params <- fit_gumbel_mle(x)
+  location <- params["location"]
+  scale <- params["scale"]
   
   if (type == 'reestimate_params') { # might be an overkill
-    pvalues_i <- extRemes::pevd(q = x, loc = location, scale = scale, type = 'Gumbel', lower.tail = F)
+    pvalues_i <- pgumbel(q = x, location = location, scale = scale, lower.tail = F)
+    location_i <- location
+    scale_i <- scale
     
     k <- 5
     iter <- 0
     x_iter <- x
-    while(pvalues_i[length(pvalues_i)] < extreme_alpha){
+    while(length(pvalues_i) > 0 && pvalues_i[length(pvalues_i)] < extreme_alpha){
       iter <- iter + 1
       
       x_iter <- x_iter[-length(x_iter)]
@@ -255,40 +259,108 @@ extreme_outlier_test <- function(x, type='regular', double_loc_scale=F){
         break
       }
       
-      extr_i <- extRemes::fevd(x_iter, type = 'Gumbel')
+      params_i <- fit_gumbel_mle(x_iter)
       
-      location_i <- extr_i$results$par["location"]
-      scale_i <- extr_i$results$par["scale"]
+      location_i <- params_i["location"]
+      scale_i <- params_i["scale"]
       #shape_i <- extr_i$results$par["shape"]
       
-      pvalues_i <- extRemes::pevd(q = x_iter, loc = location_i, scale = scale_i, type = 'Gumbel', lower.tail = F)
+      pvalues_i <- pgumbel(q = x_iter, location = location_i, scale = scale_i, lower.tail = F)
       
       if (iter >= k) {
         break
       }
     }
-    pvalues <- extRemes::pevd(q = x, loc = location_i, scale = scale_i, type = 'Gumbel', lower.tail = F)
+    pvalues <- pgumbel(q = x, location = location_i, scale = scale_i, lower.tail = F)
   } else if (type == 'extreme_without_tail') {
     
     x_new <- x[1:(length(x)-3)]
     
-    extr_i <- extRemes::fevd(x_new, type = 'Gumbel')
+    params_i <- fit_gumbel_mle(x_new)
     
-    location_i <- extr_i$results$par["location"]
-    scale_i <- extr_i$results$par["scale"]
+    location_i <- params_i["location"]
+    scale_i <- params_i["scale"]
     #shape_i <- extr_i$results$par["shape"]
     
-    pvalues <- extRemes::pevd(q = x, loc = location_i, scale = scale_i, type = 'Gumbel', lower.tail = F)
+    pvalues <- pgumbel(q = x, location = location_i, scale = scale_i, lower.tail = F)
   } else if (type == 'regular') {
     if (double_loc_scale){
       location <- location*2
       scale <- scale*2
     }
-    pvalues <- extRemes::pevd(q = x, loc = location, scale = scale, type = 'Gumbel', lower.tail = F)
-    #pvalues <- 1-extRemes::pevd(q = x, loc = location, scale = scale, shape = shape)
+    pvalues <- pgumbel(q = x, location = location, scale = scale, lower.tail = F)
+    #pvalues <- 1 - pgumbel(q = x, location = location, scale = scale, lower.tail = TRUE)
   } else {
     stop('extreme type can only by regular, reestimate_params or extreme_without_tail')
   }
   
   return(pvalues)
+}
+
+fit_gumbel_mle <- function(x) {
+  x <- x[is.finite(x)]
+  if (length(x) < 2) {
+    stop("At least two finite observations are required to fit a Gumbel distribution")
+  }
+  if (stats::sd(x) == 0) {
+    stop("Cannot fit a Gumbel distribution to constant data")
+  }
+
+  initial_scale <- stats::sd(x) * sqrt(6) / pi
+  initial_log_scale <- log(initial_scale)
+
+  nll <- function(log_scale) {
+    scale <- exp(log_scale)
+    location <- gumbel_profile_location(x, scale)
+    z <- (x - location) / scale
+    exp_neg_z <- exp(-z)
+
+    if (any(!is.finite(exp_neg_z))) {
+      return(Inf)
+    }
+
+    length(x) * log(scale) + sum(z + exp_neg_z)
+  }
+
+  fit <- stats::optim(
+    par = initial_log_scale,
+    fn = nll,
+    method = "BFGS",
+    control = list(reltol = sqrt(.Machine$double.eps))
+  )
+
+  if (fit$convergence != 0 || !is.finite(fit$value)) {
+    fit <- stats::optimize(
+      f = nll,
+      interval = initial_log_scale + c(-20, 20)
+    )
+    log_scale <- fit$minimum
+  } else {
+    log_scale <- fit$par
+  }
+
+  scale <- exp(log_scale)
+  location <- gumbel_profile_location(x, scale)
+  c(location = location, scale = scale)
+}
+
+gumbel_profile_location <- function(x, scale) {
+  z <- -x / scale
+  z_max <- max(z)
+  -scale * (z_max + log(mean(exp(z - z_max))))
+}
+
+pgumbel <- function(q, location, scale, lower.tail = TRUE) {
+  if (length(scale) != 1 || !is.finite(scale) || scale <= 0) {
+    stop("'scale' must be a positive finite scalar")
+  }
+
+  transformed <- exp(-(q - location) / scale)
+  cdf <- exp(-transformed)
+
+  if (lower.tail) {
+    return(cdf)
+  }
+
+  -expm1(-transformed)
 }
