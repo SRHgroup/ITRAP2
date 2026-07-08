@@ -629,3 +629,86 @@ mask_pmhc_to_screen <- function(
   attr(object, "pMHC_masked_matrix") <- M
   return(object)
 }
+
+
+label_hla_match <- function(
+    pmhc_tcr,
+    hla_genotypes,
+    donor_cols = c("donor", "patient", "BC"),
+    classification_col = "pMHC_classification",
+    hla_col = "HLA",
+    output_col = "hla_match"
+) {
+  
+  pmhc_donor_col <- donor_cols[donor_cols %in% colnames(pmhc_tcr)][1]
+  if (is.na(pmhc_donor_col)) {
+    stop("No donor column found in pmhc_tcr. Expected one of: ",
+         paste(donor_cols, collapse = ", "))
+  }
+  
+  hla_donor_col <- donor_cols[donor_cols %in% colnames(hla_genotypes)][1]
+  if (is.na(hla_donor_col)) {
+    stop("No donor column found in hla_genotypes. Expected one of: ",
+         paste(donor_cols, collapse = ", "))
+  }
+  
+  genotype_cols <- grep("^HLA-[ABC][12]$", colnames(hla_genotypes), value = TRUE)
+  if (length(genotype_cols) == 0) {
+    stop("No genotype columns found. Expected columns like HLA-A1, HLA-A2, HLA-B1, etc.")
+  }
+  
+  pmhc_donors <- unique(as.character(pmhc_tcr[[pmhc_donor_col]]))
+  hla_donors  <- unique(as.character(hla_genotypes[[hla_donor_col]]))
+  
+  missing_donors <- setdiff(pmhc_donors, hla_donors)
+  if (length(missing_donors) > 0) {
+    stop("These donors are present in pmhc_tcr but missing from hla_genotypes: ",
+         paste(missing_donors, collapse = ", "))
+  }
+  
+  if (anyDuplicated(hla_genotypes[[hla_donor_col]]) > 0) {
+    stop("hla_genotypes has duplicated donor IDs. Each donor must appear once.")
+  }
+  
+  # small helper to standardize HLA strings:
+  # HLA-A*02:01 -> A0201
+  # A*02:01     -> A0201
+  # A0201       -> A0201
+  clean_hla <- function(x) {
+    x <- as.character(x)
+    x <- toupper(x)
+    x <- gsub("^HLA-", "", x)
+    x <- gsub("[*:\\s]", "", x)
+    x
+  }
+  
+  if (hla_col %in% colnames(pmhc_tcr)) {
+    pmhc_hla <- clean_hla(pmhc_tcr[[hla_col]])
+  } else if (classification_col %in% colnames(pmhc_tcr)) {
+    pmhc_hla <- sub("-.*$", "", pmhc_tcr[[classification_col]])
+    pmhc_hla <- clean_hla(pmhc_hla)
+  } else {
+    stop("pmhc_tcr must contain either column '", hla_col,
+         "' or column '", classification_col, "'.")
+  }
+  
+  hla_genotypes[[hla_donor_col]] <- as.character(hla_genotypes[[hla_donor_col]])
+  for (col in genotype_cols) {
+    hla_genotypes[[col]] <- clean_hla(hla_genotypes[[col]])
+  }
+  
+  # annotate each row
+  pmhc_tcr[[output_col]] <- vapply(seq_len(nrow(pmhc_tcr)), function(i) {
+    donor_i <- as.character(pmhc_tcr[[pmhc_donor_col]][i])
+    hla_i <- pmhc_hla[i]
+    
+    donor_hlas <- unlist(
+      hla_genotypes[hla_genotypes[[hla_donor_col]] == donor_i, genotype_cols],
+      use.names = FALSE
+    )
+    
+    hla_i %in% donor_hlas
+  }, logical(1))
+  
+  pmhc_tcr
+}

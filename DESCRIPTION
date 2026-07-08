@@ -16,10 +16,8 @@ Imports:
     RColorBrewer, 
     circlize, 
     cowplot, 
-    randomcoloR,
     patchwork,
     extRemes,
-    EnvStats
 Suggests: 
     knitr,
     rmarkdown
